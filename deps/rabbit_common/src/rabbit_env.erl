@@ -18,6 +18,8 @@
          get_context_after_reloading_env/1,
          dbg_config/0,
          env_vars/0,
+         has_var_been_overridden/1,
+         has_var_been_overridden/2,
          get_used_env_vars/0,
          log_process_env/0,
          log_context/1,
@@ -224,6 +226,15 @@ env_vars() ->
     case erlang:function_exported(os, list_env_vars, 0) of
         true  -> os:list_env_vars(); %% OTP < 24
         false -> os:env()            %% OTP >= 24
+    end.
+
+has_var_been_overridden(Var) ->
+    has_var_been_overridden(get_context(), Var).
+
+has_var_been_overridden(#{var_origins := Origins}, Var) ->
+    case maps:get(Var, Origins, default) of
+        default -> false;
+        _       -> true
     end.
 
 get_used_env_vars() ->

@@ -5,7 +5,7 @@
 -include("include/logging.hrl").
 
 -export([setup_early_logging/2,
-         main_handler_config/0,
+         default_formatter/0,
          enable_quick_dbg/1,
          use_colored_logging/0,
          use_colored_logging/1]).
@@ -61,9 +61,11 @@ primary_logger_filter(LogLevels) ->
 
 main_handler_config() ->
     #{filter_default => log,
-      formatter => {logger_formatter, #{legacy_header => false,
-                                        single_line => true}}
-     }.
+      formatter => default_formatter()}.
+
+default_formatter() ->
+    {logger_formatter, #{legacy_header => false,
+                         single_line => true}}.
 
 use_colored_logging() ->
     use_colored_logging(rabbit_prelaunch:get_context()).

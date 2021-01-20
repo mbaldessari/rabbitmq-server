@@ -164,9 +164,7 @@ define test_rabbitmq_config
 [
   {rabbit, [
 $(if $(RABBITMQ_NODE_PORT),      {tcp_listeners$(comma) [$(RABBITMQ_NODE_PORT)]}$(comma),)
-      {loopback_users, []},
-      {log, [{file, [{level, debug}]},
-             {console, [{level, debug}]}]}
+      {loopback_users, []}
     ]},
   {rabbitmq_management, [
 $(if $(RABBITMQ_NODE_PORT),      {listener$(comma) [{port$(comma) $(shell echo "$$(($(RABBITMQ_NODE_PORT) + 10000))")}]},)
@@ -209,8 +207,6 @@ define test_rabbitmq_config_with_tls
 [
   {rabbit, [
       {loopback_users, []},
-      {log, [{file, [{level, debug}]},
-             {console, [{level, debug}]}]},
       {ssl_listeners, [5671]},
       {ssl_options, [
           {cacertfile, "$(TEST_TLS_CERTS_DIR_in_config)/testca/cacert.pem"},
