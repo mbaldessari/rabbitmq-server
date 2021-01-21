@@ -39,12 +39,6 @@ setup(Context) ->
     ok = configure_logger(Context),
     ok.
 
-get_log_base_dir(#{log_base_dir := LogBaseDirFromEnv} = Context) ->
-    case rabbit_env:has_var_been_overridden(Context, log_base_dir) of
-        false -> application:get_env(lager, log_root, LogBaseDirFromEnv);
-        true  -> LogBaseDirFromEnv
-    end.
-
 %% -------------------------------------------------------------------
 %% ERL_CRASH_DUMP setting.
 %% -------------------------------------------------------------------
@@ -66,6 +60,12 @@ set_ERL_CRASH_DUMP_envvar(Context) ->
               [ErlCrashDump],
               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
             ok
+    end.
+
+get_log_base_dir(#{log_base_dir := LogBaseDirFromEnv} = Context) ->
+    case rabbit_env:has_var_been_overridden(Context, log_base_dir) of
+        false -> application:get_env(lager, log_root, LogBaseDirFromEnv);
+        true  -> LogBaseDirFromEnv
     end.
 
 %% -------------------------------------------------------------------

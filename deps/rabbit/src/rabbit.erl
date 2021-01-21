@@ -970,7 +970,6 @@ do_run_postlaunch_phase(Plugins) ->
 
         %% The node is ready: mark it as such and log it.
         %% NOTE: PLEASE DO NOT ADD CRITICAL NODE STARTUP CODE AFTER THIS.
-        % XXX ok = rabbit_lager:broker_is_started(),
         ActivePlugins = rabbit_plugins:active(),
         StrictlyPlugins = rabbit_plugins:strictly_plugins(ActivePlugins),
         ok = log_broker_started(StrictlyPlugins),

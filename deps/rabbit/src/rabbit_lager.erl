@@ -11,7 +11,7 @@
 
 %% API
 -export([start_logger/0, log_locations/0, fold_sinks/2,
-         broker_is_started/0, set_log_level/1]).
+         set_log_level/1]).
 
 %% For test purposes
 -export([configure_lager/0]).
@@ -38,25 +38,6 @@ start_logger() ->
               Acc
       end, ok),
     ensure_log_working().
-
-broker_is_started() ->
-    {ok, HwmCurrent} = application:get_env(lager, error_logger_hwm),
-    {ok, HwmOrig0} = application:get_env(lager, error_logger_hwm_original),
-    HwmOrig = case get_most_verbose_log_level() of
-                  debug -> HwmOrig0 * 100;
-                  _     -> HwmOrig0
-              end,
-    case HwmOrig =:= HwmCurrent of
-        false ->
-            ok = application:set_env(lager, error_logger_hwm, HwmOrig),
-            Handlers = gen_event:which_handlers(lager_event),
-            lists:foreach(fun(Handler) ->
-                              lager:set_loghwm(Handler, HwmOrig)
-                          end, Handlers),
-            ok;
-        _ ->
-            ok
-    end.
 
 set_log_level(Level) ->
     IsValidLevel = lists:member(Level, lager_util:levels()),
@@ -700,24 +681,3 @@ maybe_remove_logger_handler() ->
             error_logger:error_msg("calling ~p:~p failed: ~p:~p~n",
                                    [M, F, Err, Reason])
     end.
-
-get_most_verbose_log_level() ->
-    {ok, HandlersA} = application:get_env(lager, handlers),
-    {ok, ExtraSinks} = application:get_env(lager, extra_sinks),
-    HandlersB = lists:append(
-                  [H || {_, Keys} <- ExtraSinks,
-                        {handlers, H} <- Keys]),
-    get_most_verbose_log_level(HandlersA ++ HandlersB,
-                               lager_util:level_to_num(none)).
-
-get_most_verbose_log_level([{_, Props} | Rest], MostVerbose) ->
-    LogLevel = proplists:get_value(level, Props, info),
-    LogLevelNum = lager_util:level_to_num(LogLevel),
-    case LogLevelNum > MostVerbose of
-        true ->
-            get_most_verbose_log_level(Rest, LogLevelNum);
-        false ->
-            get_most_verbose_log_level(Rest, MostVerbose)
-    end;
-get_most_verbose_log_level([], MostVerbose) ->
-    lager_util:num_to_level(MostVerbose).
