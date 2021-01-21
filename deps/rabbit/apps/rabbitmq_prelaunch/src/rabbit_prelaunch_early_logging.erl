@@ -5,6 +5,7 @@
 -include("include/logging.hrl").
 
 -export([setup_early_logging/2,
+         reset_early_setup/0,
          default_formatter/0,
          enable_quick_dbg/1,
          use_colored_logging/0,
@@ -28,6 +29,9 @@ do_setup_early_logging(#{log_levels := LogLevels},
                        _LagerEventToStdout) ->
     add_primary_filter(LogLevels),
     ok = logger:update_handler_config(default, main_handler_config()).
+
+reset_early_setup() ->
+    ok = logger:remove_primary_filter(rabbitmq_levels_and_categories).
 
 is_primary_filter_defined() ->
     #{filters := Filters} = logger:get_primary_config(),

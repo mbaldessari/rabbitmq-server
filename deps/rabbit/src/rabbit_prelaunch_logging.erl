@@ -37,7 +37,6 @@ setup(Context) ->
     ?LOG_DEBUG("== Logging =="),
     ok = set_ERL_CRASH_DUMP_envvar(Context),
     ok = configure_logger(Context),
-    throw(youpi),
     ok.
 
 get_log_base_dir(#{log_base_dir := LogBaseDirFromEnv} = Context) ->
@@ -81,12 +80,8 @@ configure_logger(Context) ->
     LogConfig1 = handle_default_and_overridden_outputs(LogConfig0, Context),
     LogConfig2 = apply_log_levels_from_env(LogConfig1, Context),
     LogConfig3 = make_filenames_absolute(LogConfig2),
-    ?LOG_DEBUG("LogConfig = ~p", [LogConfig3],
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
     Handlers = create_logger_handlers_conf(LogConfig3),
-    ?LOG_DEBUG("Handlers = ~p", [Handlers],
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
-    io:format(standard_error, "Handlers = ~p~n", [Handlers]).
+    install_handlers(Handlers).
 
 get_log_configuration_from_app_env(Context) ->
     %% The log configuration in the Cuttlefish configuration file or the
@@ -126,17 +121,18 @@ normalize_main_log_config1([], LogConfig) ->
 
 normalize_main_output(file, Props, Outputs) ->
     normalize_main_file_output(Props, #{module => logger_std_h,
-                                       type => file}, Outputs);
+                                        config => #{type => file}}, Outputs);
 normalize_main_output(console, Props, Outputs) ->
     normalize_main_console_output(Props, #{module => logger_std_h,
-                                           type => standard_io}, Outputs).
+                                           config => #{type => standard_io}}, Outputs).
 %% TODO: Normalize other output types.
 
 normalize_main_file_output([{file, false} | _], _, Outputs) ->
     maps:filter(
       fun
-          (_, #{module := logger_std_h, type := file}) -> false;
-          (_, _)                                       -> true
+          (_, #{module := logger_std_h,
+                config := #{type := file}}) -> false;
+          (_, _)                            -> true
       end, Outputs);
 normalize_main_file_output([{file, Filename} | Rest],
                            Output, Outputs) ->
@@ -153,9 +149,11 @@ normalize_main_file_output([], Output, Outputs) ->
 normalize_main_console_output([{enabled, false} | _], _, Outputs) ->
     maps:filter(
       fun
-          (_, #{module := logger_std_h, type := standard_io})    -> false;
-          (_, #{module := logger_std_h, type := standard_error}) -> false;
-          (_, _)                                                 -> true
+          (_, #{module := logger_std_h,
+                config := #{type := standard_io}})    -> false;
+          (_, #{module := logger_std_h,
+                config := #{type := standard_error}}) -> false;
+          (_, _)                                      -> true
       end, Outputs);
 normalize_main_console_output([{enabled, true} | Rest], Output, Outputs) ->
     normalize_main_console_output(Rest, Output, Outputs);
@@ -174,8 +172,8 @@ normalize_per_cat_log_config([{level, Level} | Rest], LogConfig) ->
     normalize_per_cat_log_config(Rest, LogConfig1);
 normalize_per_cat_log_config([{file, Filename} | Rest], LogConfig) ->
     Output = #{module => logger_std_h,
-               type => file,
-               file => Filename},
+               config => #{type => file,
+                           file => Filename}},
     LogConfig1 = LogConfig#{outputs => [Output]},
     normalize_per_cat_log_config(Rest, LogConfig1);
 normalize_per_cat_log_config([], LogConfig) ->
@@ -194,11 +192,11 @@ handle_default_main_output(
     Outputs1 = case MainLogFile of
                    "-" when NoOutputsConfigured orelse Overridden ->
                        [#{module => logger_std_h,
-                          type => standard_io}];
+                          config => #{type => standard_io}}];
                    Filename when NoOutputsConfigured orelse Overridden ->
                        [#{module => logger_std_h,
-                          type => file,
-                          file => Filename}];
+                          config => #{type => file,
+                                      file => Filename}}];
                    _ ->
                        Outputs
                end,
@@ -225,8 +223,8 @@ handle_default_upgrade_cat_output(
                        [];
                    Filename when NoOutputsConfigured orelse Overridden ->
                        [#{module => logger_std_h,
-                          type => file,
-                          file => Filename}];
+                          config => #{type => file,
+                                      file => Filename}}];
                    _ ->
                        Outputs
                end,
@@ -269,8 +267,8 @@ make_filenames_absolute(#{outputs := Outputs} = Config, LogBaseDir) ->
     Outputs1 = lists:map(
                  fun
                      (#{module := logger_std_h,
-                        type := file,
-                        file := Filename} = Output) ->
+                        config := #{type := file,
+                                    file := Filename}} = Output) ->
                          Output#{file => filename:absname(Filename, LogBaseDir)};
                      (Output) ->
                          Output
@@ -281,7 +279,9 @@ create_logger_handlers_conf(
   #{global := GlobalConfig, per_category := PerCatConfig}) ->
     Handlers0 = create_global_handlers_conf(GlobalConfig),
     Handlers1 = create_per_cat_handlers_conf(PerCatConfig, Handlers0),
-    Handlers1.
+    Handlers2 = adjust_log_levels(Handlers1),
+    Handlers3 = assign_handler_ids(Handlers2),
+    Handlers3.
 
 create_global_handlers_conf(#{outputs := Outputs} = GlobalConfig) ->
     create_handlers_conf(Outputs, global, GlobalConfig, #{}).
@@ -309,10 +309,10 @@ create_handlers_conf([], _, _, Handlers) ->
     Handlers.
 
 create_handler_key(
-  #{module := logger_std_h, type := file, file := Filename}) ->
+  #{module := logger_std_h, config := #{type := file, file := Filename}}) ->
     {file, Filename};
 create_handler_key(
-  #{module := logger_std_h, type := standard_io}) ->
+  #{module := logger_std_h, config := #{type := standard_io}}) ->
     {console, standard_io}.
 
 create_handler_conf(Output, global, Config) ->
@@ -323,71 +323,156 @@ create_handler_conf(Output, global, Config) ->
             formatter => rabbit_prelaunch_early_logging:default_formatter()};
 create_handler_conf(Output, CatName, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
-    Output#{filter_default => stop,
-            filters => [{CatName, {fun filter_event/2, {CatName, Level}}}],
+    Output#{level => Level,
+            filter_default => stop,
+            filters => [{CatName, {fun filter_cat_event/2, {CatName, Level}}}],
             formatter => rabbit_prelaunch_early_logging:default_formatter()}.
 
 update_handler_conf(
   #{level := ConfiguredLevel} = Handler, global, Output) ->
     case Output of
         #{level := NewLevel} ->
-            case logger:compare_levels(NewLevel, ConfiguredLevel) of
-                lt -> Handler#{level => NewLevel};
-                _  -> Handler
-            end;
+            Handler#{level =>
+                     get_less_severe_level(NewLevel, ConfiguredLevel)};
         _ ->
             Handler
     end;
-update_handler_conf(
-  #{filters := Filters} = Handler, CatName, Output) ->
-    Level = compute_level_from_config_and_output(Handler, Output),
-    Filters1 = [{CatName, {fun filter_event/2, {CatName, Level}}} | Filters],
-    Handler#{filters => Filters1}.
+update_handler_conf(Handler, CatName, Output) ->
+    Handler1 = add_global_filter(Handler),
+    add_cat_filter(Handler1, CatName, Output).
 
 compute_level_from_config_and_output(Config, Output) ->
     GeneralLevel = maps:get(level, Config, ?DEFAULT_LOG_LEVEL),
     OutputLevel = maps:get(level, Output, GeneralLevel),
-    case logger:compare_levels(OutputLevel, GeneralLevel) of
-        lt -> OutputLevel;
-        _  -> GeneralLevel
-    end.
+    get_less_severe_level(OutputLevel, GeneralLevel).
 
 filter_cat_in_global_handlers(Handlers, CatName, CatConfig) ->
     maps:map(
-      fun(_, #{filters := Filters} = Handler) ->
-              Level = compute_level_from_config_and_output(
-                        Handler, CatConfig),
-              Filters1 = [{CatName,
-                           {fun filter_event/2, {CatName, Level}}}
-                          | Filters],
-              Handler#{filters => Filters1}
+      fun(_, Handler) ->
+              Handler1 = add_global_filter(Handler),
+              add_cat_filter(Handler1, CatName, CatConfig)
       end, Handlers).
 
 filter_out_cat_in_other_handlers(Handlers, CatName) ->
     maps:map(
       fun(_, #{filters := Filters} = Handler) ->
               case lists:keymember(CatName, 1, Filters) of
-                  true ->
-                      Handler;
-                  false ->
-                      Filters1 = [{CatName,
-                                   {fun filter_event/2, {CatName, none}}}
-                                  | Filters],
-                      Handler#{filters => Filters1}
+                  true  -> Handler;
+                  false -> add_cat_filter(Handler, CatName, none)
               end
       end, Handlers).
 
-filter_event(
+add_global_filter(#{level := Level, filters := []} = Handler) ->
+    %% This is a global handler: we need to add a filter for global & unknown
+    %% events because categories using the same handler might use a lower
+    %% level.
+    Filters = [{global, {fun filter_global_event/2, Level}}],
+    Handler#{filters => Filters};
+add_global_filter(Handler) ->
+    Handler.
+
+add_cat_filter(#{filters := Filters} = Handler, CatName, none = Level) ->
+    Filters1 = [{CatName, {fun filter_cat_event/2, {CatName, Level}}}
+                | Filters],
+    Handler#{filters => Filters1};
+add_cat_filter(#{filters := Filters} = Handler, CatName, CatConfig) ->
+    Level = compute_level_from_config_and_output(Handler, CatConfig),
+    Filters1 = [{CatName, {fun filter_cat_event/2, {CatName, Level}}}
+                | Filters],
+    Handler#{filters => Filters1}.
+
+filter_global_event(
+  #{meta := #{domain := ?LOGGER_DOMAIN_GLOBAL}},
+  none) ->
+    stop;
+filter_global_event(
+  #{level := Level,
+    meta := #{domain := ?LOGGER_DOMAIN_GLOBAL}} = LogEvent,
+  GlobalLevel) ->
+    case logger:compare_levels(Level, GlobalLevel) of
+        lt -> stop;
+        _  -> LogEvent
+    end;
+filter_global_event(LogEvent, _) ->
+    LogEvent.
+
+filter_cat_event(
   #{meta := #{domain := [?LOGGER_SUPER_DOMAIN_NAME, CatName | _]}},
   {CatName, none}) ->
     stop;
-filter_event(
+filter_cat_event(
   #{level := Level,
     meta := #{domain := [?LOGGER_SUPER_DOMAIN_NAME, CatName | _]}} = LogEvent,
   {CatName, CatLevel}) ->
-    case logger:compare_levels(CatLevel, Level) of
-        lt -> LogEvent;
-        _  -> stop
+    case logger:compare_levels(Level, CatLevel) of
+        lt -> stop;
+        _  -> LogEvent
     end;
-filter_event(_, _) ->
+filter_cat_event(_, _) ->
     ignore.
+
+adjust_log_levels(Handlers) ->
+    maps:map(
+      fun(_, #{level := GeneralLevel, filters := Filters} = Handler) ->
+              Level = lists:foldl(
+                        fun
+                            ({_, {_, {_, LvlA}}}, LvlB) ->
+                                get_less_severe_level(LvlA, LvlB);
+                            ({_, {_, LvlA}}, LvlB) ->
+                                get_less_severe_level(LvlA, LvlB)
+                        end, GeneralLevel, Filters),
+              Handler#{level => Level}
+      end, Handlers).
+
+assign_handler_ids(Handlers) ->
+    Handlers1 = [maps:get(Key, Handlers)
+                 || Key <- lists:sort(maps:keys(Handlers))],
+    assign_handler_ids(Handlers1, #{next_file => 1}, []).
+
+assign_handler_ids(
+  [#{module := logger_std_h, config := #{type := file}} = Handler | Rest],
+  #{next_file := NextFile} = State,
+  Result) ->
+    Id = list_to_atom(rabbit_misc:format("rabbitmq_log_file_~b", [NextFile])),
+    Handler1 = Handler#{id => Id},
+    assign_handler_ids(
+      Rest, State#{next_file => NextFile + 1}, [Handler1 | Result]);
+assign_handler_ids(
+  [#{module := logger_std_h, config := #{type := standard_io}} = Handler | Rest],
+  State,
+  Result) ->
+    Handler1 = Handler#{id => stdout},
+    assign_handler_ids(
+      Rest, State, [Handler1 | Result]);
+assign_handler_ids([], _, Result) ->
+    lists:reverse(Result).
+
+install_handlers([]) ->
+    throw(no_logger_handler_configured);
+install_handlers(Handlers) ->
+    ok = rabbit_prelaunch_early_logging:reset_early_setup(),
+    ok = do_install_handlers(Handlers),
+    ok = logger:remove_handler(default),
+    ok = define_primary_level(Handlers),
+    ok.
+
+do_install_handlers([#{id := Id, module := Module} = Handler | Rest]) ->
+    ok = logger:add_handler(Id, Module, Handler),
+    do_install_handlers(Rest);
+do_install_handlers([]) ->
+    ok.
+
+define_primary_level(Handlers) ->
+    define_primary_level(Handlers, emergency).
+
+define_primary_level([#{level := Level} | Rest], PrimaryLevel) ->
+    NewLevel = get_less_severe_level(Level, PrimaryLevel),
+    define_primary_level(Rest, NewLevel);
+define_primary_level([], PrimaryLevel) ->
+    logger:set_primary_config(level, PrimaryLevel).
+
+get_less_severe_level(LevelA, LevelB) ->
+    case logger:compare_levels(LevelA, LevelB) of
+        lt -> LevelA;
+        _  -> LevelB
+    end.
