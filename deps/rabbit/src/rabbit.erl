@@ -1076,10 +1076,9 @@ insert_default_data() ->
 %%---------------------------------------------------------------------------
 %% logging
 
--spec log_locations() -> [rabbit_lager:log_location()].
+-spec log_locations() -> [rabbit_prelaunch_logging:log_location()].
 log_locations() ->
-    % XXX rabbit_lager:log_locations().
-    [].
+    rabbit_prelaunch_logging:log_locations().
 
 -spec config_locations() -> [rabbit_config:config_location()].
 config_locations() ->

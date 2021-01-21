@@ -10,7 +10,12 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("rabbitmq_prelaunch/include/logging.hrl").
 
--export([setup/1]).
+-export([setup/1,
+         log_locations/0]).
+
+-export_type([log_location/0]).
+
+-type log_location() :: file:name() | string().
 
 %% Logging configuration in the `rabbit` Erlang application.
 %%
@@ -30,6 +35,7 @@
 %%     OutputsProps
 %%   ]
 %% ]}.
+
 -define(DEFAULT_LOG_LEVEL, info).
 
 setup(Context) ->
@@ -38,6 +44,37 @@ setup(Context) ->
     ok = set_ERL_CRASH_DUMP_envvar(Context),
     ok = configure_logger(Context),
     ok.
+
+log_locations() ->
+    Handlers = logger:get_handler_config(),
+    log_locations(Handlers, []).
+
+log_locations([#{module := logger_std_h,
+                 config := #{type := file,
+                             file := Filename}} | Rest],
+              Locations) ->
+    Locations1 = add_once(Locations, Filename),
+    log_locations(Rest, Locations1);
+log_locations([#{module := logger_std_h,
+                 config := #{type := standard_io}} | Rest],
+              Locations) ->
+    Locations1 = add_once(Locations, "<stdout>"),
+    log_locations(Rest, Locations1);
+log_locations([#{module := logger_std_h,
+                 config := #{type := standard_error}} | Rest],
+              Locations) ->
+    Locations1 = add_once(Locations, "<stderr>"),
+    log_locations(Rest, Locations1);
+log_locations([_ | Rest], Locations) ->
+    log_locations(Rest, Locations);
+log_locations([], Locations) ->
+    lists:sort(Locations).
+
+add_once(Locations, Location) ->
+    case lists:member(Location, Locations) of
+        false -> [Location | Locations];
+        true  -> Locations
+    end.
 
 %% -------------------------------------------------------------------
 %% ERL_CRASH_DUMP setting.

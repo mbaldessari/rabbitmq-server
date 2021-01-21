@@ -19,8 +19,7 @@ RMQ_ERLC_OPTS += -pa $(DEPS_DIR)/rabbitmq_cli/_build/dev/lib/rabbitmqctl/ebin
 endif
 
 # Add Lager parse_transform module and our default Lager extra sinks.
-LAGER_EXTRA_SINKS += rabbit_log \
-		     rabbit_log_channel \
+LAGER_EXTRA_SINKS += rabbit_log_channel \
 		     rabbit_log_connection \
 		     rabbit_log_feature_flags \
 		     rabbit_log_federation \
