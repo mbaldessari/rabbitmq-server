@@ -43,6 +43,7 @@ setup(Context) ->
     ?LOG_DEBUG("== Logging =="),
     ok = set_ERL_CRASH_DUMP_envvar(Context),
     ok = configure_logger(Context),
+    throw(youpi),
     ok.
 
 log_locations() ->
@@ -113,14 +114,14 @@ configure_logger(Context) ->
     %% Configure main handlers.
     %% We distinguish them by their type and possibly other
     %% parameters (file name, syslog settings, etc.).
-    LogConfig0 = get_log_configuration_from_app_env(Context),
+    LogConfig0 = get_log_configuration_from_app_env(),
     LogConfig1 = handle_default_and_overridden_outputs(LogConfig0, Context),
     LogConfig2 = apply_log_levels_from_env(LogConfig1, Context),
-    LogConfig3 = make_filenames_absolute(LogConfig2),
+    LogConfig3 = make_filenames_absolute(LogConfig2, Context),
     Handlers = create_logger_handlers_conf(LogConfig3),
     install_handlers(Handlers).
 
-get_log_configuration_from_app_env(Context) ->
+get_log_configuration_from_app_env() ->
     %% The log configuration in the Cuttlefish configuration file or the
     %% application environment is not structured logically. This functions is
     %% responsible for extracting the configuration and organize it. If one day
@@ -135,10 +136,8 @@ get_log_configuration_from_app_env(Context) ->
                       || {Cat, Props} <- CatProps]),
     EnvWithoutCats = proplists:delete(categories, Env),
     GlobalConfig = normalize_main_log_config(EnvWithoutCats, DefaultProps),
-    LogBaseDir = get_log_base_dir(Context),
     #{global => GlobalConfig,
-      per_category => PerCatConfig,
-      log_base_dir => LogBaseDir}.
+      per_category => PerCatConfig}.
 
 normalize_main_log_config(Props, DefaultProps) ->
     Outputs = case proplists:get_value(level, DefaultProps) of
@@ -157,11 +156,17 @@ normalize_main_log_config1([], LogConfig) ->
     LogConfig.
 
 normalize_main_output(file, Props, Outputs) ->
-    normalize_main_file_output(Props, #{module => logger_std_h,
-                                        config => #{type => file}}, Outputs);
+    normalize_main_file_output(
+      Props,
+      #{module => logger_std_h,
+        config => #{type => file}},
+      Outputs);
 normalize_main_output(console, Props, Outputs) ->
-    normalize_main_console_output(Props, #{module => logger_std_h,
-                                           config => #{type => standard_io}}, Outputs).
+    normalize_main_console_output(
+      Props,
+      #{module => logger_std_h,
+        config => #{type => standard_io}},
+      Outputs).
 %% TODO: Normalize other output types.
 
 normalize_main_file_output([{file, false} | _], _, Outputs) ->
@@ -291,22 +296,24 @@ apply_log_levels_from_env(LogConfig, #{log_levels := LogLevels}) ->
 
 make_filenames_absolute(
   #{global := GlobalConfig,
-    per_category := PerCatConfig,
-    log_base_dir := LogBaseDir} = LogConfig) ->
-    GlobalConfig1 = make_filenames_absolute(GlobalConfig, LogBaseDir),
+    per_category := PerCatConfig} = LogConfig,
+  Context) ->
+    LogBaseDir = get_log_base_dir(Context),
+    GlobalConfig1 = make_filenames_absolute1(GlobalConfig, LogBaseDir),
     PerCatConfig1 = maps:map(
                       fun(_, CatConfig) ->
-                              make_filenames_absolute(CatConfig, LogBaseDir)
+                              make_filenames_absolute1(CatConfig, LogBaseDir)
                       end, PerCatConfig),
     LogConfig#{global => GlobalConfig1, per_category => PerCatConfig1}.
 
-make_filenames_absolute(#{outputs := Outputs} = Config, LogBaseDir) ->
+make_filenames_absolute1(#{outputs := Outputs} = Config, LogBaseDir) ->
     Outputs1 = lists:map(
                  fun
                      (#{module := logger_std_h,
                         config := #{type := file,
                                     file := Filename}} = Output) ->
-                         Output#{file => filename:absname(Filename, LogBaseDir)};
+                         Output#{file => filename:absname(
+                                           Filename, LogBaseDir)};
                      (Output) ->
                          Output
                  end, Outputs),

@@ -1,3 +1,10 @@
+%% This Source Code Form is subject to the terms of the Mozilla Public
+%% License, v. 2.0. If a copy of the MPL was not distributed with this
+%% file, You can obtain one at https://mozilla.org/MPL/2.0/.
+%%
+%% Copyright (c) 2007-2021 VMware, Inc. or its affiliates.  All rights reserved.
+%%
+
 -module(rabbit_prelaunch_early_logging).
 
 -include_lib("kernel/include/logger.hrl").
@@ -6,7 +13,7 @@
 
 -export([setup_early_logging/2,
          reset_early_setup/0,
-         default_formatter/0,
+         default_formatter/1,
          enable_quick_dbg/1,
          use_colored_logging/0,
          use_colored_logging/1]).
@@ -25,10 +32,11 @@ setup_early_logging(Context, LagerEventToStdout) ->
 get_default_log_level() ->
     #{"prelaunch" => notice}.
 
-do_setup_early_logging(#{log_levels := LogLevels},
+do_setup_early_logging(#{log_levels := LogLevels} = Context,
                        _LagerEventToStdout) ->
     add_primary_filter(LogLevels),
-    ok = logger:update_handler_config(default, main_handler_config()).
+    ok = logger:update_handler_config(
+           default, main_handler_config(Context)).
 
 reset_early_setup() ->
     ok = logger:remove_primary_filter(rabbitmq_levels_and_categories).
@@ -63,13 +71,13 @@ primary_logger_filter(LogLevels) ->
             end
     end.
 
-main_handler_config() ->
+main_handler_config(Context) ->
     #{filter_default => log,
-      formatter => default_formatter()}.
+      formatter => default_formatter(Context)}.
 
-default_formatter() ->
-    {logger_formatter, #{legacy_header => false,
-                         single_line => true}}.
+default_formatter(Context) ->
+    Color = use_colored_logging(Context),
+    {rabbit_logger_formatter, #{color => Color}}.
 
 use_colored_logging() ->
     use_colored_logging(rabbit_prelaunch:get_context()).
