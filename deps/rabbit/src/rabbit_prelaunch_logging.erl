@@ -43,7 +43,6 @@ setup(Context) ->
                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
     ok = set_ERL_CRASH_DUMP_envvar(Context),
     ok = configure_logger(Context),
-    throw("Hello from Erlang logger WIP!"),
     ok.
 
 log_locations() ->
