@@ -39,11 +39,11 @@
 -define(DEFAULT_LOG_LEVEL, info).
 
 setup(Context) ->
-    ?LOG_DEBUG(""),
-    ?LOG_DEBUG("== Logging =="),
+    ?LOG_DEBUG("~n== Logging ==",
+               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
     ok = set_ERL_CRASH_DUMP_envvar(Context),
     ok = configure_logger(Context),
-    throw(youpi),
+    throw("Hello from Erlang logger WIP!"),
     ok.
 
 log_locations() ->
@@ -118,8 +118,18 @@ configure_logger(Context) ->
     LogConfig1 = handle_default_and_overridden_outputs(LogConfig0, Context),
     LogConfig2 = apply_log_levels_from_env(LogConfig1, Context),
     LogConfig3 = make_filenames_absolute(LogConfig2, Context),
-    Handlers = create_logger_handlers_conf(LogConfig3),
-    install_handlers(Handlers).
+    LogConfig4 = configure_formatters(LogConfig3, Context),
+    Handlers = create_logger_handlers_conf(LogConfig4),
+    ?LOG_DEBUG("Logger handlers:~n  ~p", [Handlers],
+               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_NOTICE("Logging: switching to configured handler(s); following "
+                "messages may not be visible on <stdout>",
+                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ok = install_handlers(Handlers),
+    ?LOG_NOTICE("Logging: configured log handlers are now ACTIVE",
+                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ok = maybe_log_test_messsages(LogConfig3),
+    ok.
 
 get_log_configuration_from_app_env() ->
     %% The log configuration in the Cuttlefish configuration file or the
@@ -295,8 +305,7 @@ apply_log_levels_from_env(LogConfig, #{log_levels := LogLevels}) ->
       end, LogConfig, LogLevels).
 
 make_filenames_absolute(
-  #{global := GlobalConfig,
-    per_category := PerCatConfig} = LogConfig,
+  #{global := GlobalConfig, per_category := PerCatConfig} = LogConfig,
   Context) ->
     LogBaseDir = get_log_base_dir(Context),
     GlobalConfig1 = make_filenames_absolute1(GlobalConfig, LogBaseDir),
@@ -311,11 +320,43 @@ make_filenames_absolute1(#{outputs := Outputs} = Config, LogBaseDir) ->
                  fun
                      (#{module := logger_std_h,
                         config := #{type := file,
-                                    file := Filename}} = Output) ->
-                         Output#{file => filename:absname(
-                                           Filename, LogBaseDir)};
+                                    file := Filename} = Cfg} = Output) ->
+                         Cfg1 = Cfg#{file => filename:absname(
+                                               Filename, LogBaseDir)},
+                         Output#{config => Cfg1};
                      (Output) ->
                          Output
+                 end, Outputs),
+    Config#{outputs => Outputs1}.
+
+configure_formatters(
+  #{global := GlobalConfig, per_category := PerCatConfig} = LogConfig,
+  Context) ->
+    GlobalConfig1 = configure_formatters1(GlobalConfig, Context),
+    PerCatConfig1 = maps:map(
+                      fun(_, CatConfig) ->
+                              configure_formatters1(CatConfig, Context)
+                      end, PerCatConfig),
+    LogConfig#{global => GlobalConfig1, per_category => PerCatConfig1}.
+
+configure_formatters1(#{outputs := Outputs} = Config, Context) ->
+    StdioFormatter = rabbit_prelaunch_early_logging:default_formatter(
+                       Context),
+    FileFormatter = rabbit_prelaunch_early_logging:default_formatter(
+                      Context#{output_supports_colors => false}),
+    Outputs1 = lists:map(
+                 fun
+                     (#{module := logger_std_h,
+                        config := #{type := standard_io}} = Output) ->
+                         case maps:is_key(formatter, Output) of
+                             true  -> Output;
+                             false -> Output#{formatter => StdioFormatter}
+                         end;
+                     (Output) ->
+                         case maps:is_key(formatter, Output) of
+                             true  -> Output;
+                             false -> Output#{formatter => FileFormatter}
+                         end
                  end, Outputs),
     Config#{outputs => Outputs1}.
 
@@ -363,14 +404,13 @@ create_handler_conf(Output, global, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
     Output#{level => Level,
             filter_default => log,
-            filters => [],
-            formatter => rabbit_prelaunch_early_logging:default_formatter()};
+            filters => []};
 create_handler_conf(Output, CatName, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
     Output#{level => Level,
             filter_default => stop,
-            filters => [{CatName, {fun filter_cat_event/2, {CatName, Level}}}],
-            formatter => rabbit_prelaunch_early_logging:default_formatter()}.
+            filters => [{CatName,
+                         {fun filter_cat_event/2, {CatName, Level}}}]}.
 
 update_handler_conf(
   #{level := ConfiguredLevel} = Handler, global, Output) ->
@@ -520,3 +560,30 @@ get_less_severe_level(LevelA, LevelB) ->
         lt -> LevelA;
         _  -> LevelB
     end.
+
+maybe_log_test_messsages(
+  #{per_category := #{prelaunch := #{level := debug}}}) ->
+    log_test_messages();
+maybe_log_test_messsages(
+  #{global := #{level := debug}}) ->
+    log_test_messages();
+maybe_log_test_messsages(_) ->
+    ok.
+
+log_test_messages() ->
+    ?LOG_DEBUG("Testing debug log level",
+               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_INFO("Testing info log level",
+              #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_NOTICE("Testing notice log level",
+                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_WARNING("Testing warning log level",
+                 #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_ERROR("Testing error log level",
+               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_CRITICAL("Testing critical log level",
+                  #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_ALERT("Testing alert log level",
+               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+    ?LOG_EMERGENCY("Testing emergency log level",
+                   #{domain => ?LOGGER_DOMAIN_PRELAUNCH}).
