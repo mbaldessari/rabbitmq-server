@@ -244,6 +244,9 @@ handle_default_main_output(
                    "-" when NoOutputsConfigured orelse Overridden ->
                        [#{module => logger_std_h,
                           config => #{type => standard_io}}];
+                   "-stderr" when NoOutputsConfigured orelse Overridden ->
+                       [#{module => logger_std_h,
+                          config => #{type => standard_error}}];
                    Filename when NoOutputsConfigured orelse Overridden ->
                        [#{module => logger_std_h,
                           config => #{type => file,
@@ -272,6 +275,9 @@ handle_default_upgrade_cat_output(
                    "-" when NoOutputsConfigured orelse Overridden ->
                        %% We re-use the default logger handler.
                        [];
+                   "-stderr" when NoOutputsConfigured orelse Overridden ->
+                       [#{module => logger_std_h,
+                          config => #{type => standard_error}}];
                    Filename when NoOutputsConfigured orelse Overridden ->
                        [#{module => logger_std_h,
                           config => #{type => file,
@@ -290,7 +296,8 @@ handle_default_upgrade_cat_output(
 apply_log_levels_from_env(LogConfig, #{log_levels := LogLevels}) ->
     maps:fold(
       fun
-          (color, _, LC) ->
+          (_, Value, LC) when is_boolean(Value) ->
+              %% Ignore the 'color' and 'json' flags.
               LC;
           (global, Level, #{global := GlobalConfig} = LC) ->
               GlobalConfig1 = GlobalConfig#{level => Level},
@@ -346,7 +353,9 @@ configure_formatters1(#{outputs := Outputs} = Config, Context) ->
     Outputs1 = lists:map(
                  fun
                      (#{module := logger_std_h,
-                        config := #{type := standard_io}} = Output) ->
+                        config := #{type := Stdio}} = Output)
+                       when Stdio =:= standard_io orelse
+                            Stdio =:= standard_error->
                          case maps:is_key(formatter, Output) of
                              true  -> Output;
                              false -> Output#{formatter => StdioFormatter}
@@ -397,7 +406,10 @@ create_handler_key(
     {file, Filename};
 create_handler_key(
   #{module := logger_std_h, config := #{type := standard_io}}) ->
-    {console, standard_io}.
+    {console, standard_io};
+create_handler_key(
+  #{module := logger_std_h, config := #{type := standard_error}}) ->
+    {console, standard_error}.
 
 create_handler_conf(Output, global, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
@@ -521,10 +533,19 @@ assign_handler_ids(
     assign_handler_ids(
       Rest, State#{next_file => NextFile + 1}, [Handler1 | Result]);
 assign_handler_ids(
-  [#{module := logger_std_h, config := #{type := standard_io}} = Handler | Rest],
+  [#{module := logger_std_h, config := #{type := standard_io}} = Handler
+   | Rest],
   State,
   Result) ->
     Handler1 = Handler#{id => stdout},
+    assign_handler_ids(
+      Rest, State, [Handler1 | Result]);
+assign_handler_ids(
+  [#{module := logger_std_h, config := #{type := standard_error}} = Handler
+   | Rest],
+  State,
+  Result) ->
+    Handler1 = Handler#{id => stderr},
     assign_handler_ids(
       Rest, State, [Handler1 | Result]);
 assign_handler_ids([], _, Result) ->

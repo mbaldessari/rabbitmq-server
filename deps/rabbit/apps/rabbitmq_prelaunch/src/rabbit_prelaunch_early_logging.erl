@@ -75,9 +75,11 @@ main_handler_config(Context) ->
     #{filter_default => log,
       formatter => default_formatter(Context)}.
 
+default_formatter(#{log_levels := #{json := true}}) ->
+    {rabbit_logger_json_fmt, #{}};
 default_formatter(Context) ->
     Color = use_colored_logging(Context),
-    {rabbit_logger_formatter, #{color => Color}}.
+    {rabbit_logger_text_fmt, #{color => Color}}.
 
 use_colored_logging() ->
     use_colored_logging(rabbit_prelaunch:get_context()).

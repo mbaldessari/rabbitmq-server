@@ -635,6 +635,12 @@ parse_log_levels([CategoryValue | Rest], Result) ->
         ["-color"] ->
             Result1 = Result#{color => false},
             parse_log_levels(Rest, Result1);
+        ["+json"] ->
+            Result1 = Result#{json => true},
+            parse_log_levels(Rest, Result1);
+        ["-json"] ->
+            Result1 = Result#{json => false},
+            parse_log_levels(Rest, Result1);
         [CategoryOrLevel] ->
             case parse_level(CategoryOrLevel) of
                 undefined ->

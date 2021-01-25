@@ -5,7 +5,7 @@
 %% Copyright (c) 2021 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
--module(rabbit_logger_formatter).
+-module(rabbit_logger_text_fmt).
 
 -export([format/2]).
 
