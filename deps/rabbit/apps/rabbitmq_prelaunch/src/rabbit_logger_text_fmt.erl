@@ -15,6 +15,8 @@ format(#{msg := Msg, meta := Meta} = LogEvent, Config) ->
     FormattedMsg = format_msg(Msg, Meta, Config),
     prepend_prefix_to_msg_and_add_color(Prefix, Color, FormattedMsg, Config).
 
+format_prefix(_, #{prefix := false}) ->
+    none;
 format_prefix(#{level := Level,
                 meta := #{time := Timestamp,
                           pid := Pid}},
@@ -141,6 +143,14 @@ level_to_color(critical, _)  -> "\033[1;37m\033[48;5;20m";
 level_to_color(alert, _)     -> "\033[1;37m\033[48;5;93m";
 level_to_color(emergency, _) -> "\033[1;37m\033[48;5;196m".
 
+prepend_prefix_to_msg_and_add_color(
+  none, {ColorStart, ColorEnd}, FormattedMsg, Config) ->
+    Lines = split_lines(FormattedMsg, Config),
+    [case Line of
+         "" -> [$\n];
+         _  -> [ColorStart, Line, ColorEnd, $\n]
+     end
+     || Line <- Lines];
 prepend_prefix_to_msg_and_add_color(
   Prefix, {ColorStart, ColorEnd}, FormattedMsg, Config) ->
     Lines = split_lines(FormattedMsg, Config),

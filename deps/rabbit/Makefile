@@ -132,13 +132,13 @@ APPS_DIR := $(CURDIR)/apps
 
 LOCAL_DEPS = sasl rabbitmq_prelaunch os_mon inets compiler public_key crypto ssl syntax_tools xmerl
 BUILD_DEPS = rabbitmq_cli
-DEPS = cuttlefish ranch rabbit_common ra sysmon_handler stdout_formatter recon observer_cli osiris amqp10_common
+DEPS = cuttlefish ranch rabbit_common ra sysmon_handler stdout_formatter recon observer_cli osiris amqp10_common syslog
 TEST_DEPS = rabbitmq_ct_helpers rabbitmq_ct_client_helpers amqp_client meck proper
 
 PLT_APPS += mnesia
 
 dep_cuttlefish = hex 2.6.0
-dep_syslog = git https://github.com/schlagert/syslog e7ce7658901683e0530446243489d82ff85393ec
+dep_syslog = git https://github.com/schlagert/syslog afa22abe282ead1b6421b27a9d6469a24b776e66
 dep_osiris = git https://github.com/rabbitmq/osiris master
 
 define usage_xml_to_erl

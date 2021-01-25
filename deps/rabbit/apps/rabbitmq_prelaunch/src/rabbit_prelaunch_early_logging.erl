@@ -14,6 +14,9 @@
 -export([setup_early_logging/2,
          reset_early_setup/0,
          default_formatter/1,
+         default_console_formatter/1,
+         default_file_formatter/1,
+         default_syslog_formatter/1,
          enable_quick_dbg/1,
          use_colored_logging/0,
          use_colored_logging/1]).
@@ -80,6 +83,19 @@ default_formatter(#{log_levels := #{json := true}}) ->
 default_formatter(Context) ->
     Color = use_colored_logging(Context),
     {rabbit_logger_text_fmt, #{color => Color}}.
+
+default_console_formatter(Context) ->
+    default_formatter(Context).
+
+default_file_formatter(Context) ->
+    default_formatter(Context#{output_supports_colors => false}).
+
+default_syslog_formatter(Context) ->
+    {Module, Config} = default_file_formatter(Context),
+    case Module of
+        rabbit_logger_text_fmt -> {Module, Config#{prefix => false}};
+        rabbit_logger_json_fmt -> {Module, Config}
+    end.
 
 use_colored_logging() ->
     use_colored_logging(rabbit_prelaunch:get_context()).

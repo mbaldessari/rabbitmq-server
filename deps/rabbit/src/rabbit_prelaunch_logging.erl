@@ -2,7 +2,7 @@
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at https://mozilla.org/MPL/2.0/.
 %%
-%% Copyright (c) 2007-2021 VMware, Inc. or its affiliates.  All rights reserved.
+%% Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
 %%
 
 -module(rabbit_prelaunch_logging).
@@ -64,6 +64,13 @@ log_locations([#{module := logger_std_h,
                  config := #{type := standard_error}} | Rest],
               Locations) ->
     Locations1 = add_once(Locations, "<stderr>"),
+    log_locations(Rest, Locations1);
+log_locations([#{module := syslog_logger_h} | Rest],
+              Locations) ->
+    Host = application:get_env(syslog, dest_host, ""),
+    Locations1 = add_once(
+                   Locations,
+                   rabbit_misc:format("syslog:~s", [Host])),
     log_locations(Rest, Locations1);
 log_locations([_ | Rest], Locations) ->
     log_locations(Rest, Locations);
@@ -175,6 +182,12 @@ normalize_main_output(console, Props, Outputs) ->
       Props,
       #{module => logger_std_h,
         config => #{type => standard_io}},
+      Outputs);
+normalize_main_output(syslog, Props, Outputs) ->
+    normalize_main_console_output(
+      Props,
+      #{module => syslog_logger_h,
+        config => #{}},
       Outputs).
 %% TODO: Normalize other output types.
 
@@ -197,7 +210,11 @@ normalize_main_file_output([], Output, Outputs) ->
     [Output | Outputs].
 %% TODO: Normalize other file properties.
 
-normalize_main_console_output([{enabled, false} | _], _, Outputs) ->
+normalize_main_console_output(
+  [{enabled, false} | _],
+  #{module := logger_std_h, config := #{type := Std}},
+  Outputs)
+  when Std =:= standard_io orelse Std =:= standard_error ->
     maps:filter(
       fun
           (_, #{module := logger_std_h,
@@ -205,6 +222,15 @@ normalize_main_console_output([{enabled, false} | _], _, Outputs) ->
           (_, #{module := logger_std_h,
                 config := #{type := standard_error}}) -> false;
           (_, _)                                      -> true
+      end, Outputs);
+normalize_main_console_output(
+  [{enabled, false} | _],
+  #{module := syslog_logger_h},
+  Outputs) ->
+    maps:filter(
+      fun
+          (_, #{module := syslog_logger_h}) -> false;
+          (_, _)                            -> true
       end, Outputs);
 normalize_main_console_output([{enabled, true} | Rest], Output, Outputs) ->
     normalize_main_console_output(Rest, Output, Outputs);
@@ -346,19 +372,26 @@ configure_formatters(
     LogConfig#{global => GlobalConfig1, per_category => PerCatConfig1}.
 
 configure_formatters1(#{outputs := Outputs} = Config, Context) ->
-    StdioFormatter = rabbit_prelaunch_early_logging:default_formatter(
-                       Context),
-    FileFormatter = rabbit_prelaunch_early_logging:default_formatter(
-                      Context#{output_supports_colors => false}),
+    ConsFormatter =
+    rabbit_prelaunch_early_logging:default_console_formatter(Context),
+    FileFormatter =
+    rabbit_prelaunch_early_logging:default_file_formatter(Context),
+    SyslogFormatter =
+    rabbit_prelaunch_early_logging:default_syslog_formatter(Context),
     Outputs1 = lists:map(
                  fun
                      (#{module := logger_std_h,
                         config := #{type := Stdio}} = Output)
                        when Stdio =:= standard_io orelse
-                            Stdio =:= standard_error->
+                            Stdio =:= standard_error ->
                          case maps:is_key(formatter, Output) of
                              true  -> Output;
-                             false -> Output#{formatter => StdioFormatter}
+                             false -> Output#{formatter => ConsFormatter}
+                         end;
+                     (#{module := syslog_logger_h} = Output) ->
+                         case maps:is_key(formatter, Output) of
+                             true  -> Output;
+                             false -> Output#{formatter => SyslogFormatter}
                          end;
                      (Output) ->
                          case maps:is_key(formatter, Output) of
@@ -409,7 +442,10 @@ create_handler_key(
     {console, standard_io};
 create_handler_key(
   #{module := logger_std_h, config := #{type := standard_error}}) ->
-    {console, standard_error}.
+    {console, standard_error};
+create_handler_key(
+  #{module := syslog_logger_h}) ->
+    syslog.
 
 create_handler_conf(Output, global, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
@@ -538,16 +574,21 @@ assign_handler_ids(
   State,
   Result) ->
     Handler1 = Handler#{id => stdout},
-    assign_handler_ids(
-      Rest, State, [Handler1 | Result]);
+    assign_handler_ids(Rest, State, [Handler1 | Result]);
 assign_handler_ids(
   [#{module := logger_std_h, config := #{type := standard_error}} = Handler
    | Rest],
   State,
   Result) ->
     Handler1 = Handler#{id => stderr},
-    assign_handler_ids(
-      Rest, State, [Handler1 | Result]);
+    assign_handler_ids(Rest, State, [Handler1 | Result]);
+assign_handler_ids(
+  [#{module := syslog_logger_h} = Handler
+   | Rest],
+  State,
+  Result) ->
+    Handler1 = Handler#{id => syslog},
+    assign_handler_ids(Rest, State, [Handler1 | Result]);
 assign_handler_ids([], _, Result) ->
     lists:reverse(Result).
 
