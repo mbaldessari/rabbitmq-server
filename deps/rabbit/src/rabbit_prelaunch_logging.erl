@@ -39,7 +39,7 @@
 -define(DEFAULT_LOG_LEVEL, info).
 
 setup(Context) ->
-    ?LOG_DEBUG("~n== Logging ==",
+    ?LOG_DEBUG("\n== Logging ==",
                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
     ok = set_ERL_CRASH_DUMP_envvar(Context),
     ok = configure_logger(Context),
@@ -49,20 +49,23 @@ log_locations() ->
     Handlers = logger:get_handler_config(),
     log_locations(Handlers, []).
 
-log_locations([#{module := logger_std_h,
+log_locations([#{module := Mod,
                  config := #{type := file,
                              file := Filename}} | Rest],
-              Locations) ->
+              Locations)
+  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
     Locations1 = add_once(Locations, Filename),
     log_locations(Rest, Locations1);
-log_locations([#{module := logger_std_h,
+log_locations([#{module := Mod,
                  config := #{type := standard_io}} | Rest],
-              Locations) ->
+              Locations)
+  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
     Locations1 = add_once(Locations, "<stdout>"),
     log_locations(Rest, Locations1);
-log_locations([#{module := logger_std_h,
+log_locations([#{module := Mod,
                  config := #{type := standard_error}} | Rest],
-              Locations) ->
+              Locations)
+  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
     Locations1 = add_once(Locations, "<stderr>"),
     log_locations(Rest, Locations1);
 log_locations([#{module := syslog_logger_h} | Rest],
@@ -174,7 +177,7 @@ normalize_main_log_config1([], LogConfig) ->
 normalize_main_output(file, Props, Outputs) ->
     normalize_main_file_output(
       Props,
-      #{module => logger_std_h,
+      #{module => rabbit_logger_std_h,
         config => #{type => file}},
       Outputs);
 normalize_main_output(console, Props, Outputs) ->
@@ -189,27 +192,36 @@ normalize_main_output(syslog, Props, Outputs) ->
       #{module => syslog_logger_h,
         config => #{}},
       Outputs).
-%% TODO: Normalize other output types.
 
 normalize_main_file_output([{file, false} | _], _, Outputs) ->
     maps:filter(
       fun
-          (_, #{module := logger_std_h,
+          (_, #{module := rabbit_logger_std_h,
                 config := #{type := file}}) -> false;
           (_, _)                            -> true
       end, Outputs);
 normalize_main_file_output([{file, Filename} | Rest],
-                           Output, Outputs) ->
-    Output1 = Output#{file => Filename},
+                           #{config := Config} = Output, Outputs) ->
+    Output1 = Output#{config => Config#{file => Filename}},
     normalize_main_file_output(Rest, Output1, Outputs);
 normalize_main_file_output([{level, Level} | Rest],
                            Output, Outputs) ->
     Output1 = Output#{level => Level},
     normalize_main_file_output(Rest, Output1, Outputs);
+normalize_main_file_output([{date, DateSpec} | Rest],
+                           #{config := Config} = Output, Outputs) ->
+    Output1 = Output#{config => Config#{rotate_on_date => DateSpec}},
+    normalize_main_file_output(Rest, Output1, Outputs);
+normalize_main_file_output([{size, Size} | Rest],
+                           #{config := Config} = Output, Outputs) ->
+    Output1 = Output#{config => Config#{max_no_bytes => Size}},
+    normalize_main_file_output(Rest, Output1, Outputs);
+normalize_main_file_output([{count, Count} | Rest],
+                           #{config := Config} = Output, Outputs) ->
+    Output1 = Output#{config => Config#{max_no_files => Count}},
+    normalize_main_file_output(Rest, Output1, Outputs);
 normalize_main_file_output([], Output, Outputs) ->
     [Output | Outputs].
-%% TODO: Normalize other file properties.
-
 normalize_main_console_output(
   [{enabled, false} | _],
   #{module := logger_std_h, config := #{type := Std}},
@@ -248,7 +260,7 @@ normalize_per_cat_log_config([{level, Level} | Rest], LogConfig) ->
     LogConfig1 = LogConfig#{level => Level},
     normalize_per_cat_log_config(Rest, LogConfig1);
 normalize_per_cat_log_config([{file, Filename} | Rest], LogConfig) ->
-    Output = #{module => logger_std_h,
+    Output = #{module => rabbit_logger_std_h,
                config => #{type => file,
                            file => Filename}},
     LogConfig1 = LogConfig#{outputs => [Output]},
@@ -274,11 +286,24 @@ handle_default_main_output(
                        [#{module => logger_std_h,
                           config => #{type => standard_error}}];
                    Filename when NoOutputsConfigured orelse Overridden ->
-                       [#{module => logger_std_h,
+                       [#{module => rabbit_logger_std_h,
                           config => #{type => file,
                                       file => Filename}}];
-                   _ ->
-                       Outputs
+                   Filename ->
+                       [case Output of
+                            #{module := Mod,
+                              config := #{type := file, file := _}}
+                              when Mod =:= logger_std_h orelse
+                                   Mod =:= rabbit_logger_std_h ->
+                                Output;
+                            #{module := Mod,
+                              config := #{type := file} = Config}
+                              when Mod =:= logger_std_h orelse
+                                   Mod =:= rabbit_logger_std_h ->
+                                Output#{config => Config#{file => Filename}};
+                            _ ->
+                                Output
+                        end || Output <- Outputs]
                end,
     case Outputs1 of
         Outputs -> LogConfig;
@@ -305,7 +330,7 @@ handle_default_upgrade_cat_output(
                        [#{module => logger_std_h,
                           config => #{type => standard_error}}];
                    Filename when NoOutputsConfigured orelse Overridden ->
-                       [#{module => logger_std_h,
+                       [#{module => rabbit_logger_std_h,
                           config => #{type => file,
                                       file => Filename}}];
                    _ ->
@@ -350,9 +375,11 @@ make_filenames_absolute(
 make_filenames_absolute1(#{outputs := Outputs} = Config, LogBaseDir) ->
     Outputs1 = lists:map(
                  fun
-                     (#{module := logger_std_h,
+                     (#{module := Mod,
                         config := #{type := file,
-                                    file := Filename} = Cfg} = Output) ->
+                                    file := Filename} = Cfg} = Output)
+                       when Mod =:= logger_std_h orelse
+                            Mod =:= rabbit_logger_std_h ->
                          Cfg1 = Cfg#{file => filename:absname(
                                                Filename, LogBaseDir)},
                          Output#{config => Cfg1};
@@ -435,7 +462,8 @@ create_handlers_conf([], _, _, Handlers) ->
     Handlers.
 
 create_handler_key(
-  #{module := logger_std_h, config := #{type := file, file := Filename}}) ->
+  #{module := Mod, config := #{type := file, file := Filename}})
+  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
     {file, Filename};
 create_handler_key(
   #{module := logger_std_h, config := #{type := standard_io}}) ->
@@ -561,9 +589,10 @@ assign_handler_ids(Handlers) ->
     assign_handler_ids(Handlers1, #{next_file => 1}, []).
 
 assign_handler_ids(
-  [#{module := logger_std_h, config := #{type := file}} = Handler | Rest],
+  [#{module := Mod, config := #{type := file}} = Handler | Rest],
   #{next_file := NextFile} = State,
-  Result) ->
+  Result)
+  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
     Id = list_to_atom(rabbit_misc:format("rabbitmq_log_file_~b", [NextFile])),
     Handler1 = Handler#{id => Id},
     assign_handler_ids(
