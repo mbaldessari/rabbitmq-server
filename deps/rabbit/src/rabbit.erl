@@ -8,7 +8,7 @@
 -module(rabbit).
 
 -include_lib("kernel/include/logger.hrl").
--include_lib("rabbitmq_prelaunch/include/logging.hrl").
+-include_lib("rabbit_common/include/logging.hrl").
 
 %% Transitional step until we can require Erlang/OTP 21 and
 %% use the now recommended try/catch syntax for obtaining the stack trace.
@@ -264,7 +264,7 @@
 
 -rabbit_boot_step({networking,
                    [{description, "TCP and TLS listeners (backwards compatibility)"},
-                    {mfa,         {logger, debug, ["'networking' boot step skipped and moved to end of startup", [], #{domain => ?LOGGER_DOMAIN_GLOBAL}]}},
+                    {mfa,         {logger, debug, ["'networking' boot step skipped and moved to end of startup", [], #{domain => ?RMQLOG_DOMAIN_GLOBAL}]}},
                     {requires,    notify_cluster}]}).
 
 %%---------------------------------------------------------------------------
@@ -377,7 +377,7 @@ start_it(StartType) ->
         {ok, Marker} ->
             T0 = erlang:timestamp(),
             ?LOG_INFO("RabbitMQ is asked to start...", [],
-                      #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                      #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
             try
                 {ok, _} = application:ensure_all_started(rabbitmq_prelaunch,
                                                          StartType),
@@ -438,12 +438,12 @@ stop() ->
                 ready ->
                     Product = product_name(),
                     ?LOG_INFO("~s is asked to stop...", [Product],
-                              #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                              #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
                     do_stop(),
                     ?LOG_INFO(
                       "Successfully stopped ~s and its dependencies",
                       [Product],
-                      #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                      #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
                     ok;
                 stopped ->
                     ok
@@ -470,7 +470,7 @@ stop_and_halt() ->
         ?LOG_ERROR(
           "Error trying to stop ~s: ~p:~p",
           [product_name(), Type, Reason],
-          #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+          #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
         error({Type, Reason})
     after
         %% Enclose all the logging in the try block.
@@ -482,7 +482,7 @@ stop_and_halt() ->
                   ["Halting Erlang VM with the following applications:~n",
                    ["    ~p~n" || _ <- AppsLeft]]),
                 AppsLeft,
-                #{domain => ?LOGGER_DOMAIN_GLOBAL}),
+                #{domain => ?RMQLOG_DOMAIN_GLOBAL}),
             %% Also duplicate this information to stderr, so console where
             %% foreground broker was running (or systemd journal) will
             %% contain information about graceful termination.
@@ -532,7 +532,7 @@ stop_apps(Apps) ->
           ["Stopping ~s applications and their dependencies in the following order:~n",
            ["    ~p~n" || _ <- Apps]]),
         [product_name() | lists:reverse(Apps)],
-        #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+        #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ok = app_utils:stop_applications(
            Apps, handle_app_error(error_during_shutdown)),
     case lists:member(rabbit, Apps) of
@@ -851,13 +851,13 @@ start(normal, []) ->
                    [product_name(), product_version(), rabbit_misc:otp_release(),
                     BaseName, BaseVersion,
                     ?COPYRIGHT_MESSAGE, ?INFORMATION_MESSAGE],
-                   #{domain => ?LOGGER_DOMAIN_PRELAUNCH});
+                   #{domain => ?RMQLOG_DOMAIN_PRELAUNCH});
             _ ->
                 ?LOG_INFO(
                    "~n Starting ~s ~s on Erlang ~s~n ~s~n ~s~n",
                    [product_name(), product_version(), rabbit_misc:otp_release(),
                     ?COPYRIGHT_MESSAGE, ?INFORMATION_MESSAGE],
-                   #{domain => ?LOGGER_DOMAIN_PRELAUNCH})
+                   #{domain => ?RMQLOG_DOMAIN_PRELAUNCH})
         end,
         log_motd(),
         {ok, SupPid} = rabbit_sup:start_link(),
@@ -1033,11 +1033,11 @@ maybe_insert_default_data() ->
     case rabbit_table:needs_default_data() andalso NoDefsToImport of
         true  ->
             ?LOG_INFO("Will seed default virtual host and user...",
-                      #{domain => ?LOGGER_DOMAIN_GLOBAL}),
+                      #{domain => ?RMQLOG_DOMAIN_GLOBAL}),
             insert_default_data();
         false ->
             ?LOG_INFO("Will not seed default virtual host and user: have definitions to load...",
-                      #{domain => ?LOGGER_DOMAIN_GLOBAL}),
+                      #{domain => ?RMQLOG_DOMAIN_GLOBAL}),
             ok
     end.
 
@@ -1110,7 +1110,7 @@ log_broker_started(Plugins) ->
         "Server startup complete; ~b plugins started.~n~s",
         [length(Plugins), PluginList]), right, $\n),
     ?LOG_INFO(Message,
-              #{domain => ?LOGGER_DOMAIN_GLOBAL}),
+              #{domain => ?RMQLOG_DOMAIN_GLOBAL}),
     io:format(" completed with ~p plugins.~n", [length(Plugins)]).
 
 -define(RABBIT_TEXT_LOGO,
@@ -1202,7 +1202,7 @@ log_motd() ->
                       end
                       || Line <- Lines],
             ?LOG_INFO("~n~ts", [string:trim(Padded, trailing, [$\r, $\n])],
-                      #{domain => ?LOGGER_DOMAIN_GLOBAL})
+                      #{domain => ?RMQLOG_DOMAIN_GLOBAL})
     end.
 
 log_banner() ->
@@ -1234,7 +1234,7 @@ log_banner() ->
                         Format(K, V)
                 end || S <- Settings]), right, $\n),
     ?LOG_INFO("~n~ts", [Banner],
-              #{domain => ?LOGGER_DOMAIN_GLOBAL}).
+              #{domain => ?RMQLOG_DOMAIN_GLOBAL}).
 
 warn_if_kernel_config_dubious() ->
     case os:type() of
@@ -1246,7 +1246,7 @@ warn_if_kernel_config_dubious() ->
                 false -> ?LOG_WARNING(
                            "Kernel poll (epoll, kqueue, etc) is disabled. "
                            "Throughput and CPU utilization may worsen.~n",
-                           #{domain => ?LOGGER_DOMAIN_GLOBAL})
+                           #{domain => ?RMQLOG_DOMAIN_GLOBAL})
             end
     end,
     AsyncThreads = erlang:system_info(thread_pool_size),
@@ -1254,7 +1254,7 @@ warn_if_kernel_config_dubious() ->
         true  -> ?LOG_WARNING(
                    "Erlang VM is running with ~b I/O threads, "
                    "file I/O performance may worsen~n", [AsyncThreads],
-                   #{domain => ?LOGGER_DOMAIN_GLOBAL});
+                   #{domain => ?RMQLOG_DOMAIN_GLOBAL});
         false -> ok
     end,
     IDCOpts = case application:get_env(kernel, inet_default_connect_options) of
@@ -1264,7 +1264,7 @@ warn_if_kernel_config_dubious() ->
     case proplists:get_value(nodelay, IDCOpts, false) of
         false -> ?LOG_WARNING("Nagle's algorithm is enabled for sockets, "
                               "network I/O latency will be higher~n",
-                              #{domain => ?LOGGER_DOMAIN_GLOBAL});
+                              #{domain => ?RMQLOG_DOMAIN_GLOBAL});
         true  -> ok
     end.
 
@@ -1281,7 +1281,7 @@ warn_if_disc_io_options_dubious() ->
         ok -> ok;
         {error, {Reason, Vars}} ->
             ?LOG_WARNING(Reason, Vars,
-                         #{domain => ?LOGGER_DOMAIN_GLOBAL})
+                         #{domain => ?RMQLOG_DOMAIN_GLOBAL})
     end.
 
 validate_msg_store_io_batch_size_and_credit_disc_bound(CreditDiscBound,
@@ -1521,9 +1521,9 @@ ensure_working_fhc() ->
             {ok, false} -> "OFF"
         end,
         ?LOG_INFO("FHC read buffering:  ~s~n", [ReadBuf],
-                  #{domain => ?LOGGER_DOMAIN_GLOBAL}),
+                  #{domain => ?RMQLOG_DOMAIN_GLOBAL}),
         ?LOG_INFO("FHC write buffering: ~s~n", [WriteBuf],
-                  #{domain => ?LOGGER_DOMAIN_GLOBAL}),
+                  #{domain => ?RMQLOG_DOMAIN_GLOBAL}),
         Filename = filename:join(code:lib_dir(kernel, ebin), "kernel.app"),
         {ok, Fd} = file_handle_cache:open(Filename, [raw, binary, read], []),
         {ok, _} = file_handle_cache:read(Fd, 1),

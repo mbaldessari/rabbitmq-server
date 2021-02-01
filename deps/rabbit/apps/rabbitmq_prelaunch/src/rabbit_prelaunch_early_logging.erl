@@ -9,7 +9,7 @@
 
 -include_lib("kernel/include/logger.hrl").
 
--include("include/logging.hrl").
+-include_lib("rabbit_common/include/logging.hrl").
 
 -export([setup_early_logging/2,
          reset_early_setup/0,
@@ -58,7 +58,7 @@ primary_logger_filter(LogLevels) ->
     fun(#{level := Level, meta := Meta} = LogEvent, _) ->
             GlobalMinLevel = maps:get(global, LogLevels, notice),
             case Meta of
-                #{domain := [?LOGGER_SUPER_DOMAIN_NAME, Domain | _]} ->
+                #{domain := [?RMQLOG_SUPER_DOMAIN_NAME, Domain | _]} ->
                     MinLevel = maps:get(atom_to_list(Domain),
                                         LogLevels,
                                         GlobalMinLevel),

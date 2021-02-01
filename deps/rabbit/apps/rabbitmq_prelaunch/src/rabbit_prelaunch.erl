@@ -3,7 +3,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--include("include/logging.hrl").
+-include_lib("rabbit_common/include/logging.hrl").
 
 -export([run_prelaunch_first_phase/0,
          assert_mnesia_is_stopped/0,
@@ -28,7 +28,7 @@
 run_prelaunch_first_phase() ->
     try
         ok = logger:set_process_metadata(
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
         do_run()
     catch
         throw:{error, _} = Error ->

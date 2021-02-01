@@ -11,7 +11,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
--include("include/logging.hrl").
+-include_lib("rabbit_common/include/logging.hrl").
 
 -export([get/0,
          set/1,
@@ -32,7 +32,7 @@ get() ->
 -spec set(boot_state()) -> ok.
 set(BootState) ->
     ?LOG_DEBUG("Change boot state to `~s`", [BootState],
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?assert(is_valid(BootState)),
     case BootState of
         stopped -> persistent_term:erase(?PT_KEY_BOOT_STATE);

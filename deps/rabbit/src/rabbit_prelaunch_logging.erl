@@ -8,7 +8,7 @@
 -module(rabbit_prelaunch_logging).
 
 -include_lib("kernel/include/logger.hrl").
--include_lib("rabbitmq_prelaunch/include/logging.hrl").
+-include_lib("rabbit_common/include/logging.hrl").
 
 -export([setup/1,
          log_locations/0]).
@@ -40,7 +40,7 @@
 
 setup(Context) ->
     ?LOG_DEBUG("\n== Logging ==",
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ok = set_ERL_CRASH_DUMP_envvar(Context),
     ok = configure_logger(Context),
     ok.
@@ -98,14 +98,14 @@ set_ERL_CRASH_DUMP_envvar(Context) ->
             ?LOG_DEBUG(
               "Setting $ERL_CRASH_DUMP environment variable to \"~ts\"",
               [ErlCrashDump],
-              #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+              #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
             os:putenv("ERL_CRASH_DUMP", ErlCrashDump),
             ok;
         ErlCrashDump ->
             ?LOG_DEBUG(
               "$ERL_CRASH_DUMP environment variable already set to \"~ts\"",
               [ErlCrashDump],
-              #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+              #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
             ok
     end.
 
@@ -130,13 +130,13 @@ configure_logger(Context) ->
     LogConfig4 = configure_formatters(LogConfig3, Context),
     Handlers = create_logger_handlers_conf(LogConfig4),
     ?LOG_DEBUG("Logger handlers:~n  ~p", [Handlers],
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_NOTICE("Logging: switching to configured handler(s); following "
                 "messages may not be visible on <stdout>",
-                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ok = install_handlers(Handlers),
     ?LOG_NOTICE("Logging: configured log handlers are now ACTIVE",
-                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ok = maybe_log_test_messsages(LogConfig3),
     ok.
 
@@ -541,12 +541,12 @@ add_cat_filter(#{filters := Filters} = Handler, CatName, CatConfig) ->
     Handler#{filters => Filters1}.
 
 filter_global_event(
-  #{meta := #{domain := ?LOGGER_DOMAIN_GLOBAL}},
+  #{meta := #{domain := ?RMQLOG_DOMAIN_GLOBAL}},
   none) ->
     stop;
 filter_global_event(
   #{level := Level,
-    meta := #{domain := ?LOGGER_DOMAIN_GLOBAL}} = LogEvent,
+    meta := #{domain := ?RMQLOG_DOMAIN_GLOBAL}} = LogEvent,
   GlobalLevel) ->
     case logger:compare_levels(Level, GlobalLevel) of
         lt -> stop;
@@ -556,12 +556,12 @@ filter_global_event(LogEvent, _) ->
     LogEvent.
 
 filter_cat_event(
-  #{meta := #{domain := [?LOGGER_SUPER_DOMAIN_NAME, CatName | _]}},
+  #{meta := #{domain := [?RMQLOG_SUPER_DOMAIN_NAME, CatName | _]}},
   {CatName, none}) ->
     stop;
 filter_cat_event(
   #{level := Level,
-    meta := #{domain := [?LOGGER_SUPER_DOMAIN_NAME, CatName | _]}} = LogEvent,
+    meta := #{domain := [?RMQLOG_SUPER_DOMAIN_NAME, CatName | _]}} = LogEvent,
   {CatName, CatLevel}) ->
     case logger:compare_levels(Level, CatLevel) of
         lt -> stop;
@@ -662,18 +662,18 @@ maybe_log_test_messsages(_) ->
 
 log_test_messages() ->
     ?LOG_DEBUG("Testing debug log level",
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_INFO("Testing info log level",
-              #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+              #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_NOTICE("Testing notice log level",
-                #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_WARNING("Testing warning log level",
-                 #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                 #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_ERROR("Testing error log level",
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_CRITICAL("Testing critical log level",
-                  #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+                  #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_ALERT("Testing alert log level",
-               #{domain => ?LOGGER_DOMAIN_PRELAUNCH}),
+               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     ?LOG_EMERGENCY("Testing emergency log level",
-                   #{domain => ?LOGGER_DOMAIN_PRELAUNCH}).
+                   #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}).
