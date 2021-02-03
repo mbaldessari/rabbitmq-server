@@ -12,7 +12,6 @@
 -include_lib("rabbit_common/include/logging.hrl").
 
 -export([setup_early_logging/2,
-         reset_early_setup/0,
          default_formatter/1,
          default_console_formatter/1,
          default_file_formatter/1,
@@ -20,13 +19,14 @@
          enable_quick_dbg/1,
          use_colored_logging/0,
          use_colored_logging/1]).
+-export([filter_log_event/2]).
 
 setup_early_logging(#{log_levels := undefined} = Context,
                     LagerEventToStdout) ->
     setup_early_logging(Context#{log_levels => get_default_log_level()},
                         LagerEventToStdout);
 setup_early_logging(Context, LagerEventToStdout) ->
-    Configured = is_primary_filter_defined(),
+    Configured = is_rmqlog_filter_defined(),
     case Configured of
         true  -> ok;
         false -> do_setup_early_logging(Context, LagerEventToStdout)
@@ -37,41 +37,62 @@ get_default_log_level() ->
 
 do_setup_early_logging(#{log_levels := LogLevels} = Context,
                        _LagerEventToStdout) ->
-    add_primary_filter(LogLevels),
+    add_rmqlog_filter(LogLevels),
     ok = logger:update_handler_config(
            default, main_handler_config(Context)).
 
-reset_early_setup() ->
-    ok = logger:remove_primary_filter(rabbitmq_levels_and_categories).
+is_rmqlog_filter_defined() ->
+    {ok, #{filters := Filters}} = logger:get_handler_config(default),
+    lists:keymember(?FILTER_NAME, 1, Filters).
 
-is_primary_filter_defined() ->
-    #{filters := Filters} = logger:get_primary_config(),
-    lists:keymember(rabbitmq_levels_and_categories, 1, Filters).
-
-add_primary_filter(LogLevels) ->
-    ok = logger:add_primary_filter(
-           rabbitmq_levels_and_categories,
-           {primary_logger_filter(LogLevels), #{}}),
+add_rmqlog_filter(LogLevels) ->
+    FilterConfig0 = lists:foldl(
+                      fun
+                          ({_, V}, FC) when is_boolean(V) -> FC;
+                          ({K, V}, FC) when is_atom(K) -> FC#{K => V};
+                          ({K, V}, FC) -> FC#{list_to_atom(K) => V}
+                      end, #{}, maps:to_list(LogLevels)),
+    FilterConfig1 = case maps:is_key(global, FilterConfig0) of
+                        true  -> FilterConfig0;
+                        false -> FilterConfig0#{global => ?DEFAULT_LOG_LEVEL}
+                    end,
+    ok = logger:add_handler_filter(
+           default, ?FILTER_NAME, {fun filter_log_event/2, FilterConfig1}),
     ok = logger:set_primary_config(level, all).
 
-primary_logger_filter(LogLevels) ->
-    fun(#{level := Level, meta := Meta} = LogEvent, _) ->
-            GlobalMinLevel = maps:get(global, LogLevels, notice),
-            case Meta of
-                #{domain := [?RMQLOG_SUPER_DOMAIN_NAME, Domain | _]} ->
-                    MinLevel = maps:get(atom_to_list(Domain),
-                                        LogLevels,
-                                        GlobalMinLevel),
-                    case logger:compare_levels(Level, MinLevel) of
-                        lt -> stop;
-                        _  -> LogEvent
-                    end;
-                _ ->
-                    case logger:compare_levels(Level, GlobalMinLevel) of
-                        lt -> stop;
-                        _  -> LogEvent
-                    end
-            end
+filter_log_event(
+  #{meta := #{domain := ?RMQLOG_DOMAIN_GLOBAL}} = LogEvent,
+  FilterConfig) ->
+    MinLevel = get_min_level(global, FilterConfig),
+    do_filter_log_event(LogEvent, MinLevel);
+filter_log_event(
+  #{meta := #{domain := [?RMQLOG_SUPER_DOMAIN_NAME, CatName | _]}} = LogEvent,
+  FilterConfig) ->
+    MinLevel = get_min_level(CatName, FilterConfig),
+    do_filter_log_event(LogEvent, MinLevel);
+filter_log_event(
+  #{meta := #{domain := [CatName | _]}} = LogEvent,
+  FilterConfig) ->
+    MinLevel = get_min_level(CatName, FilterConfig),
+    do_filter_log_event(LogEvent, MinLevel);
+filter_log_event(LogEvent, FilterConfig) ->
+    MinLevel = get_min_level(global, FilterConfig),
+    do_filter_log_event(LogEvent, MinLevel).
+
+get_min_level(global, FilterConfig) ->
+    maps:get(global, FilterConfig, none);
+get_min_level(CatName, FilterConfig) ->
+    case maps:is_key(CatName, FilterConfig) of
+        true  -> maps:get(CatName, FilterConfig);
+        false -> get_min_level(global, FilterConfig)
+    end.
+
+do_filter_log_event(_, none) ->
+    stop;
+do_filter_log_event(#{level := Level} = LogEvent, MinLevel) ->
+    case logger:compare_levels(Level, MinLevel) of
+        lt -> stop;
+        _  -> LogEvent
     end.
 
 main_handler_config(Context) ->

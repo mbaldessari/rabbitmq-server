@@ -36,8 +36,6 @@
 %%   ]
 %% ]}.
 
--define(DEFAULT_LOG_LEVEL, info).
-
 setup(Context) ->
     ?LOG_DEBUG("\n== Logging ==",
                #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
@@ -479,13 +477,14 @@ create_handler_conf(Output, global, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
     Output#{level => Level,
             filter_default => log,
-            filters => []};
+            filters => [{?FILTER_NAME,
+                         {fun filter_log_event/2, #{global => Level}}}]};
 create_handler_conf(Output, CatName, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
     Output#{level => Level,
             filter_default => stop,
-            filters => [{CatName,
-                         {fun filter_cat_event/2, {CatName, Level}}}]}.
+            filters => [{?FILTER_NAME,
+                         {fun filter_log_event/2, #{CatName => Level}}}]}.
 
 update_handler_conf(
   #{level := ConfiguredLevel} = Handler, global, Output) ->
@@ -497,8 +496,7 @@ update_handler_conf(
             Handler
     end;
 update_handler_conf(Handler, CatName, Output) ->
-    Handler1 = add_global_filter(Handler),
-    add_cat_filter(Handler1, CatName, Output).
+    add_cat_filter(Handler, CatName, Output).
 
 compute_level_from_config_and_output(Config, Output) ->
     GeneralLevel = maps:get(level, Config, ?DEFAULT_LOG_LEVEL),
@@ -508,78 +506,44 @@ compute_level_from_config_and_output(Config, Output) ->
 filter_cat_in_global_handlers(Handlers, CatName, CatConfig) ->
     maps:map(
       fun(_, Handler) ->
-              Handler1 = add_global_filter(Handler),
-              add_cat_filter(Handler1, CatName, CatConfig)
+              add_cat_filter(Handler, CatName, CatConfig)
       end, Handlers).
 
 filter_out_cat_in_other_handlers(Handlers, CatName) ->
     maps:map(
       fun(_, #{filters := Filters} = Handler) ->
-              case lists:keymember(CatName, 1, Filters) of
+              {_, FilterConfig} = proplists:get_value(?FILTER_NAME, Filters),
+              case maps:is_key(CatName, FilterConfig) of
                   true  -> Handler;
-                  false -> add_cat_filter(Handler, CatName, none)
+                  false -> add_cat_filter(Handler, CatName, #{level => none})
               end
       end, Handlers).
 
-add_global_filter(#{level := Level, filters := []} = Handler) ->
-    %% This is a global handler: we need to add a filter for global & unknown
-    %% events because categories using the same handler might use a lower
-    %% level.
-    Filters = [{global, {fun filter_global_event/2, Level}}],
-    Handler#{filters => Filters};
-add_global_filter(Handler) ->
-    Handler.
+add_cat_filter(Handler, CatName, CatConfig) ->
+    Level = case CatConfig of
+                #{level := L} -> L;
+                _             -> maps:get(level, Handler)
+            end,
+    do_add_cat_filter(Handler, CatName, Level).
 
-add_cat_filter(#{filters := Filters} = Handler, CatName, none = Level) ->
-    Filters1 = [{CatName, {fun filter_cat_event/2, {CatName, Level}}}
-                | Filters],
-    Handler#{filters => Filters1};
-add_cat_filter(#{filters := Filters} = Handler, CatName, CatConfig) ->
-    Level = compute_level_from_config_and_output(Handler, CatConfig),
-    Filters1 = [{CatName, {fun filter_cat_event/2, {CatName, Level}}}
-                | Filters],
+do_add_cat_filter(#{filters := Filters} = Handler, CatName, Level) ->
+    {Fun, FilterConfig} = proplists:get_value(?FILTER_NAME, Filters),
+    FilterConfig1 = FilterConfig#{CatName => Level},
+    Filters1 = lists:keystore(?FILTER_NAME, 1, Filters,
+                              {?FILTER_NAME, {Fun, FilterConfig1}}),
     Handler#{filters => Filters1}.
 
-filter_global_event(
-  #{meta := #{domain := ?RMQLOG_DOMAIN_GLOBAL}},
-  none) ->
-    stop;
-filter_global_event(
-  #{level := Level,
-    meta := #{domain := ?RMQLOG_DOMAIN_GLOBAL}} = LogEvent,
-  GlobalLevel) ->
-    case logger:compare_levels(Level, GlobalLevel) of
-        lt -> stop;
-        _  -> LogEvent
-    end;
-filter_global_event(LogEvent, _) ->
-    LogEvent.
-
-filter_cat_event(
-  #{meta := #{domain := [?RMQLOG_SUPER_DOMAIN_NAME, CatName | _]}},
-  {CatName, none}) ->
-    stop;
-filter_cat_event(
-  #{level := Level,
-    meta := #{domain := [?RMQLOG_SUPER_DOMAIN_NAME, CatName | _]}} = LogEvent,
-  {CatName, CatLevel}) ->
-    case logger:compare_levels(Level, CatLevel) of
-        lt -> stop;
-        _  -> LogEvent
-    end;
-filter_cat_event(_, _) ->
-    ignore.
+filter_log_event(LogEvent, FilterConfig) ->
+    rabbit_prelaunch_early_logging:filter_log_event(LogEvent, FilterConfig).
 
 adjust_log_levels(Handlers) ->
     maps:map(
       fun(_, #{level := GeneralLevel, filters := Filters} = Handler) ->
-              Level = lists:foldl(
-                        fun
-                            ({_, {_, {_, LvlA}}}, LvlB) ->
-                                get_less_severe_level(LvlA, LvlB);
-                            ({_, {_, LvlA}}, LvlB) ->
+              {_, FilterConfig} = proplists:get_value(?FILTER_NAME, Filters),
+              Level = maps:fold(
+                        fun(_, LvlA, LvlB) ->
                                 get_less_severe_level(LvlA, LvlB)
-                        end, GeneralLevel, Filters),
+                        end, GeneralLevel, FilterConfig),
               Handler#{level => Level}
       end, Handlers).
 
@@ -624,7 +588,6 @@ assign_handler_ids([], _, Result) ->
 install_handlers([]) ->
     throw(no_logger_handler_configured);
 install_handlers(Handlers) ->
-    ok = rabbit_prelaunch_early_logging:reset_early_setup(),
     ok = do_install_handlers(Handlers),
     ok = logger:remove_handler(default),
     ok = define_primary_level(Handlers),

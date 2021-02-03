@@ -21,8 +21,6 @@ endif
 # Add Lager parse_transform module and our default Lager extra sinks.
 LAGER_EXTRA_SINKS += rabbit_log_federation \
 		     rabbit_log_ldap \
-		     rabbit_log_osiris \
-		     rabbit_log_ra \
 		     rabbit_log_shovel
 lager_extra_sinks = $(subst $(space),$(comma),$(LAGER_EXTRA_SINKS))
 

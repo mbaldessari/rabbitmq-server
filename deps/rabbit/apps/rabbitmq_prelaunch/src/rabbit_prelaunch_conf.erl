@@ -69,7 +69,6 @@ setup(Context) ->
                     #{config_files => [],
                       config_advanced_file => undefined}
             end,
-    ok = override_with_hard_coded_critical_config(),
     ok = set_credentials_obfuscation_secret(),
     ?LOG_DEBUG(
       "Saving config state to application env: ~p", [State],
@@ -380,19 +379,6 @@ override_with_advanced_config(Config, AdvancedConfigFile) ->
               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
             throw({error, failed_to_read_advanced_configuration_file})
     end.
-
-override_with_hard_coded_critical_config() ->
-    ?LOG_DEBUG("Override with hard-coded critical config",
-               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
-    Config = [
-              {ra,
-               %% Make Ra use a custom logger that dispatches to lager
-               %% instead of the default OTP logger
-               [{logger_module, rabbit_log_ra_shim}]},
-              {osiris,
-               [{logger_module, rabbit_log_osiris_shim}]}
-             ],
-    apply_erlang_term_based_config(Config).
 
 apply_erlang_term_based_config([{_, []} | Rest]) ->
     apply_erlang_term_based_config(Rest);
