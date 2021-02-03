@@ -19,8 +19,7 @@ RMQ_ERLC_OPTS += -pa $(DEPS_DIR)/rabbitmq_cli/_build/dev/lib/rabbitmqctl/ebin
 endif
 
 # Add Lager parse_transform module and our default Lager extra sinks.
-LAGER_EXTRA_SINKS += rabbit_log_federation \
-		     rabbit_log_ldap \
+LAGER_EXTRA_SINKS += rabbit_log_ldap \
 		     rabbit_log_shovel
 lager_extra_sinks = $(subst $(space),$(comma),$(LAGER_EXTRA_SINKS))
 
