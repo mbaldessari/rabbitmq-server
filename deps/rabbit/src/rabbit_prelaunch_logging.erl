@@ -73,6 +73,13 @@ log_locations([#{module := syslog_logger_h} | Rest],
                    Locations,
                    rabbit_misc:format("syslog:~s", [Host])),
     log_locations(Rest, Locations1);
+log_locations([#{module := rabbit_logger_exchange_h,
+                 config := #{exchange := Exchange}} | Rest],
+              Locations) ->
+    Locations1 = add_once(
+                   Locations,
+                   rabbit_misc:format("exchange:~p", [Exchange])),
+    log_locations(Rest, Locations1);
 log_locations([_ | Rest], Locations) ->
     log_locations(Rest, Locations);
 log_locations([], Locations) ->
@@ -189,6 +196,12 @@ normalize_main_output(syslog, Props, Outputs) ->
       Props,
       #{module => syslog_logger_h,
         config => #{}},
+      Outputs);
+normalize_main_output(exchange, Props, Outputs) ->
+    normalize_main_console_output(
+      Props,
+      #{module => rabbit_logger_exchange_h,
+        config => #{}},
       Outputs).
 
 normalize_main_file_output([{file, false} | _], _, Outputs) ->
@@ -235,13 +248,11 @@ normalize_main_console_output(
       end, Outputs);
 normalize_main_console_output(
   [{enabled, false} | _],
-  #{module := syslog_logger_h},
-  Outputs) ->
-    maps:filter(
-      fun
-          (_, #{module := syslog_logger_h}) -> false;
-          (_, _)                            -> true
-      end, Outputs);
+  #{module := Mod},
+  Outputs)
+  when Mod =:= syslog_logger_h orelse
+       Mod =:= rabbit_logger_exchange_h ->
+    maps:filter(fun(_, #{module := M}) -> M =/= Mod end, Outputs);
 normalize_main_console_output([{enabled, true} | Rest], Output, Outputs) ->
     normalize_main_console_output(Rest, Output, Outputs);
 normalize_main_console_output([{level, Level} | Rest],
@@ -471,7 +482,10 @@ create_handler_key(
     {console, standard_error};
 create_handler_key(
   #{module := syslog_logger_h}) ->
-    syslog.
+    syslog;
+create_handler_key(
+  #{module := rabbit_logger_exchange_h}) ->
+    exchange.
 
 create_handler_conf(Output, global, Config) ->
     Level = compute_level_from_config_and_output(Config, Output),
@@ -581,6 +595,13 @@ assign_handler_ids(
   State,
   Result) ->
     Handler1 = Handler#{id => syslog},
+    assign_handler_ids(Rest, State, [Handler1 | Result]);
+assign_handler_ids(
+  [#{module := rabbit_logger_exchange_h} = Handler
+   | Rest],
+  State,
+  Result) ->
+    Handler1 = Handler#{id => exchange},
     assign_handler_ids(Rest, State, [Handler1 | Result]);
 assign_handler_ids([], _, Result) ->
     lists:reverse(Result).
