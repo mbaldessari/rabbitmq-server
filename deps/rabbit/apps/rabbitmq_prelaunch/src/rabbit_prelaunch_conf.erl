@@ -17,8 +17,9 @@
 -endif.
 
 setup(Context) ->
-    ?LOG_DEBUG("== Configuration ==",
-               #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
+    ?LOG_DEBUG(
+       "\n== Configuration ==",
+       #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
 
     %% TODO: Check if directories/files are inside Mnesia dir.
 

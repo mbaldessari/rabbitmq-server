@@ -182,19 +182,6 @@ $(if $(RABBITMQ_NODE_PORT),      {tcp_listeners$(comma) [$(shell echo "$$((5551 
       {data_dir, "$(RABBITMQ_QUORUM_DIR)"},
       {wal_sync_method, sync}
     ]},
-  {lager, [
-      {colors, [
-          %% https://misc.flogisoft.com/bash/tip_colors_and_formatting
-          {debug,     "\\\e[0;34m" },
-          {info,      "\\\e[1;37m" },
-          {notice,    "\\\e[1;36m" },
-          {warning,   "\\\e[1;33m" },
-          {error,     "\\\e[1;31m" },
-          {critical,  "\\\e[1;35m" },
-          {alert,     "\\\e[1;44m" },
-          {emergency, "\\\e[1;41m" }
-      ]}
-    ]},
   {osiris, [
       {data_dir, "$(RABBITMQ_STREAM_DIR)"}
     ]}

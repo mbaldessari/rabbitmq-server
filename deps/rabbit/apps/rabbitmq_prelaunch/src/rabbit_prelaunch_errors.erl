@@ -1,5 +1,9 @@
 -module(rabbit_prelaunch_errors).
 
+-include_lib("kernel/include/logger.hrl").
+
+-include_lib("rabbit_common/include/logging.hrl").
+
 -export([format_error/1,
          format_exception/3,
          log_error/1,
@@ -105,9 +109,11 @@ log_message(Message) ->
               ?BOOT_FAILED_FOOTER,
               [$\n],
               all),
+    ?LOG_ERROR(
+       "~s", [string:join(Lines, "\n")],
+       #{domain => ?RMQLOG_DOMAIN_PRELAUNCH}),
     lists:foreach(
       fun(Line) ->
-              rabbit_log_prelaunch:error("~s", [Line]),
               io:format(standard_error, "~s~n", [Line])
       end, Lines),
     timer:sleep(1000),
