@@ -796,28 +796,10 @@ environment(App) ->
 -spec rotate_logs() -> rabbit_types:ok_or_error(any()).
 
 rotate_logs() ->
-    rabbit_lager:fold_sinks(
-      fun
-          (_, [], Acc) ->
-              Acc;
-          (SinkName, FileNames, Acc) ->
-              lager:log(SinkName, info, self(),
-                        "Log file rotation forced", []),
-              %% FIXME: We use an internal message, understood by
-              %% lager_file_backend. We should use a proper API, when
-              %% it's added to Lager.
-              %%
-              %% FIXME: This call is effectively asynchronous: at the
-              %% end of this function, we can't guaranty the rotation
-              %% is completed.
-              [ok = gen_event:call(SinkName,
-                                   {lager_file_backend, FileName},
-                                   rotate,
-                                   infinity) || FileName <- FileNames],
-              lager:log(SinkName, info, self(),
-                        "Log file re-opened after forced rotation", []),
-              Acc
-      end, ok).
+    ?LOG_ERROR(
+       "Forcing log rotation is currently unsupported",
+       #{domain => ?RMQLOG_DOMAIN_GLOBAL}),
+    {error, unsupported}.
 
 %%--------------------------------------------------------------------
 
