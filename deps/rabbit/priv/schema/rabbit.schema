@@ -1182,7 +1182,7 @@ end}.
 % Lager section
 % ==========================
 
-{mapping, "log.dir", "lager.log_root", [
+{mapping, "log.dir", "rabbit.log_root", [
     {datatype, string},
     {validators, ["dir_writable"]}]}.
 

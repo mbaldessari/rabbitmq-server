@@ -22,6 +22,18 @@
 %-include("logger.hrl").
 %-include("logger_internal.hrl").
 %-include("logger_h_common.hrl").
+-ifdef(TEST).
+-define(io_put_chars(DEVICE, DATA), begin
+                                        %% We log to Common Test log as well.
+                                        %% This is the file we use to check
+                                        %% the message made it to
+                                        %% stdout/stderr.
+                                        ct:log("~ts", [DATA]),
+                                        io:put_chars(DEVICE, DATA)
+                                    end).
+-else.
+-define(io_put_chars(DEVICE, DATA), io:put_chars(DEVICE, DATA)).
+-endif.
 -define(file_write(DEVICE, DATA), file:write(DEVICE, DATA)).
 -define(file_datasync(DEVICE), file:datasync(DEVICE)).
 
@@ -528,7 +540,7 @@ ensure_file(State) ->
     State.
 
 write_to_dev(Bin,#{dev:=DevName}=State) ->
-    io:put_chars(DevName, Bin),
+    ?io_put_chars(DevName, Bin),
     State;
 write_to_dev(Bin, State) ->
     State1 = #{fd:=Fd} = maybe_ensure_file(State),

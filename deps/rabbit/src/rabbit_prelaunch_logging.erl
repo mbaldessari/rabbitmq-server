@@ -13,6 +13,10 @@
 -export([setup/1,
          log_locations/0]).
 
+-ifdef(TEST).
+-export([get_less_severe_level/2]).
+-endif.
+
 -export_type([log_location/0]).
 
 -type log_location() :: file:name() | string().
@@ -51,19 +55,19 @@ log_locations([#{module := Mod,
                  config := #{type := file,
                              file := Filename}} | Rest],
               Locations)
-  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
+  when ?IS_STD_H_COMPAT(Mod) ->
     Locations1 = add_once(Locations, Filename),
     log_locations(Rest, Locations1);
 log_locations([#{module := Mod,
                  config := #{type := standard_io}} | Rest],
               Locations)
-  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
+  when ?IS_STD_H_COMPAT(Mod) ->
     Locations1 = add_once(Locations, "<stdout>"),
     log_locations(Rest, Locations1);
 log_locations([#{module := Mod,
                  config := #{type := standard_error}} | Rest],
               Locations)
-  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
+  when ?IS_STD_H_COMPAT(Mod) ->
     Locations1 = add_once(Locations, "<stderr>"),
     log_locations(Rest, Locations1);
 log_locations([#{module := syslog_logger_h} | Rest],
@@ -116,7 +120,7 @@ set_ERL_CRASH_DUMP_envvar(Context) ->
 
 get_log_base_dir(#{log_base_dir := LogBaseDirFromEnv} = Context) ->
     case rabbit_env:has_var_been_overridden(Context, log_base_dir) of
-        false -> application:get_env(lager, log_root, LogBaseDirFromEnv);
+        false -> application:get_env(rabbit, log_root, LogBaseDirFromEnv);
         true  -> LogBaseDirFromEnv
     end.
 
@@ -188,7 +192,7 @@ normalize_main_output(file, Props, Outputs) ->
 normalize_main_output(console, Props, Outputs) ->
     normalize_main_console_output(
       Props,
-      #{module => logger_std_h,
+      #{module => rabbit_logger_std_h,
         config => #{type => standard_io}},
       Outputs);
 normalize_main_output(syslog, Props, Outputs) ->
@@ -235,16 +239,22 @@ normalize_main_file_output([], Output, Outputs) ->
     [Output | Outputs].
 normalize_main_console_output(
   [{enabled, false} | _],
-  #{module := logger_std_h, config := #{type := Std}},
+  #{module := Mod1, config := #{type := Stddev}},
   Outputs)
-  when Std =:= standard_io orelse Std =:= standard_error ->
+  when ?IS_STD_H_COMPAT(Mod1) andalso
+       ?IS_STDDEV(Stddev) ->
     maps:filter(
       fun
-          (_, #{module := logger_std_h,
-                config := #{type := standard_io}})    -> false;
-          (_, #{module := logger_std_h,
-                config := #{type := standard_error}}) -> false;
-          (_, _)                                      -> true
+          (_, #{module := Mod2,
+                config := #{type := standard_io}})
+            when ?IS_STD_H_COMPAT(Mod2) ->
+              false;
+          (_, #{module := Mod2,
+                config := #{type := standard_error}})
+            when ?IS_STD_H_COMPAT(Mod2) ->
+              false;
+          (_, _) ->
+              true
       end, Outputs);
 normalize_main_console_output(
   [{enabled, false} | _],
@@ -263,16 +273,17 @@ normalize_main_console_output([], Output, Outputs) ->
     [Output | Outputs].
 
 normalize_per_cat_log_config(Props) ->
-    normalize_per_cat_log_config(Props, #{}).
+    normalize_per_cat_log_config(Props, #{outputs => []}).
 
 normalize_per_cat_log_config([{level, Level} | Rest], LogConfig) ->
     LogConfig1 = LogConfig#{level => Level},
     normalize_per_cat_log_config(Rest, LogConfig1);
-normalize_per_cat_log_config([{file, Filename} | Rest], LogConfig) ->
+normalize_per_cat_log_config([{file, Filename} | Rest],
+                             #{outputs := Outputs} = LogConfig) ->
     Output = #{module => rabbit_logger_std_h,
                config => #{type => file,
                            file => Filename}},
-    LogConfig1 = LogConfig#{outputs => [Output]},
+    LogConfig1 = LogConfig#{outputs => [Output | Outputs]},
     normalize_per_cat_log_config(Rest, LogConfig1);
 normalize_per_cat_log_config([], LogConfig) ->
     LogConfig.
@@ -289,10 +300,10 @@ handle_default_main_output(
     Overridden = rabbit_env:has_var_been_overridden(Context, main_log_file),
     Outputs1 = case MainLogFile of
                    "-" when NoOutputsConfigured orelse Overridden ->
-                       [#{module => logger_std_h,
+                       [#{module => rabbit_logger_std_h,
                           config => #{type => standard_io}}];
                    "-stderr" when NoOutputsConfigured orelse Overridden ->
-                       [#{module => logger_std_h,
+                       [#{module => rabbit_logger_std_h,
                           config => #{type => standard_error}}];
                    Filename when NoOutputsConfigured orelse Overridden ->
                        [#{module => rabbit_logger_std_h,
@@ -302,13 +313,11 @@ handle_default_main_output(
                        [case Output of
                             #{module := Mod,
                               config := #{type := file, file := _}}
-                              when Mod =:= logger_std_h orelse
-                                   Mod =:= rabbit_logger_std_h ->
+                              when ?IS_STD_H_COMPAT(Mod) ->
                                 Output;
                             #{module := Mod,
                               config := #{type := file} = Config}
-                              when Mod =:= logger_std_h orelse
-                                   Mod =:= rabbit_logger_std_h ->
+                              when ?IS_STD_H_COMPAT(Mod) ->
                                 Output#{config => Config#{file => Filename}};
                             _ ->
                                 Output
@@ -336,7 +345,7 @@ handle_default_upgrade_cat_output(
                        %% We re-use the default logger handler.
                        [];
                    "-stderr" when NoOutputsConfigured orelse Overridden ->
-                       [#{module => logger_std_h,
+                       [#{module => rabbit_logger_std_h,
                           config => #{type => standard_error}}];
                    Filename when NoOutputsConfigured orelse Overridden ->
                        [#{module => rabbit_logger_std_h,
@@ -353,7 +362,8 @@ handle_default_upgrade_cat_output(
                                                     outputs => Outputs1}}}
     end.
 
-apply_log_levels_from_env(LogConfig, #{log_levels := LogLevels}) ->
+apply_log_levels_from_env(LogConfig, #{log_levels := LogLevels})
+  when is_map(LogLevels) ->
     maps:fold(
       fun
           (_, Value, LC) when is_boolean(Value) ->
@@ -368,7 +378,9 @@ apply_log_levels_from_env(LogConfig, #{log_levels := LogLevels}) ->
               CatConfig1 = CatConfig0#{level => Level},
               PerCatConfig1 = PerCatConfig#{CatAtom => CatConfig1},
               LC#{per_category => PerCatConfig1}
-      end, LogConfig, LogLevels).
+      end, LogConfig, LogLevels);
+apply_log_levels_from_env(LogConfig, _) ->
+    LogConfig.
 
 make_filenames_absolute(
   #{global := GlobalConfig, per_category := PerCatConfig} = LogConfig,
@@ -387,8 +399,7 @@ make_filenames_absolute1(#{outputs := Outputs} = Config, LogBaseDir) ->
                      (#{module := Mod,
                         config := #{type := file,
                                     file := Filename} = Cfg} = Output)
-                       when Mod =:= logger_std_h orelse
-                            Mod =:= rabbit_logger_std_h ->
+                       when ?IS_STD_H_COMPAT(Mod) ->
                          Cfg1 = Cfg#{file => filename:absname(
                                                Filename, LogBaseDir)},
                          Output#{config => Cfg1};
@@ -416,10 +427,10 @@ configure_formatters1(#{outputs := Outputs} = Config, Context) ->
     rabbit_prelaunch_early_logging:default_syslog_formatter(Context),
     Outputs1 = lists:map(
                  fun
-                     (#{module := logger_std_h,
-                        config := #{type := Stdio}} = Output)
-                       when Stdio =:= standard_io orelse
-                            Stdio =:= standard_error ->
+                     (#{module := Mod,
+                        config := #{type := Stddev}} = Output)
+                       when ?IS_STD_H_COMPAT(Mod) andalso
+                            ?IS_STDDEV(Stddev) ->
                          case maps:is_key(formatter, Output) of
                              true  -> Output;
                              false -> Output#{formatter => ConsFormatter}
@@ -472,13 +483,15 @@ create_handlers_conf([], _, _, Handlers) ->
 
 create_handler_key(
   #{module := Mod, config := #{type := file, file := Filename}})
-  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
+  when ?IS_STD_H_COMPAT(Mod) ->
     {file, Filename};
 create_handler_key(
-  #{module := logger_std_h, config := #{type := standard_io}}) ->
+  #{module := Mod, config := #{type := standard_io}})
+  when ?IS_STD_H_COMPAT(Mod) ->
     {console, standard_io};
 create_handler_key(
-  #{module := logger_std_h, config := #{type := standard_error}}) ->
+  #{module := Mod, config := #{type := standard_error}})
+  when ?IS_STD_H_COMPAT(Mod) ->
     {console, standard_error};
 create_handler_key(
   #{module := syslog_logger_h}) ->
@@ -513,9 +526,15 @@ update_handler_conf(Handler, CatName, Output) ->
     add_cat_filter(Handler, CatName, Output).
 
 compute_level_from_config_and_output(Config, Output) ->
-    GeneralLevel = maps:get(level, Config, ?DEFAULT_LOG_LEVEL),
-    OutputLevel = maps:get(level, Output, GeneralLevel),
-    get_less_severe_level(OutputLevel, GeneralLevel).
+    case Output of
+        #{level := Level} ->
+            Level;
+        _ ->
+            case Config of
+                #{level := Level} -> Level;
+                _                 -> ?DEFAULT_LOG_LEVEL
+            end
+    end.
 
 filter_cat_in_global_handlers(Handlers, CatName, CatConfig) ->
     maps:map(
@@ -570,23 +589,23 @@ assign_handler_ids(
   [#{module := Mod, config := #{type := file}} = Handler | Rest],
   #{next_file := NextFile} = State,
   Result)
-  when Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h ->
+  when ?IS_STD_H_COMPAT(Mod) ->
     Id = list_to_atom(rabbit_misc:format("rabbitmq_log_file_~b", [NextFile])),
     Handler1 = Handler#{id => Id},
     assign_handler_ids(
       Rest, State#{next_file => NextFile + 1}, [Handler1 | Result]);
 assign_handler_ids(
-  [#{module := logger_std_h, config := #{type := standard_io}} = Handler
-   | Rest],
+  [#{module := Mod, config := #{type := standard_io}} = Handler | Rest],
   State,
-  Result) ->
+  Result)
+  when ?IS_STD_H_COMPAT(Mod) ->
     Handler1 = Handler#{id => stdout},
     assign_handler_ids(Rest, State, [Handler1 | Result]);
 assign_handler_ids(
-  [#{module := logger_std_h, config := #{type := standard_error}} = Handler
-   | Rest],
+  [#{module := Mod, config := #{type := standard_error}} = Handler | Rest],
   State,
-  Result) ->
+  Result)
+  when ?IS_STD_H_COMPAT(Mod) ->
     Handler1 = Handler#{id => stderr},
     assign_handler_ids(Rest, State, [Handler1 | Result]);
 assign_handler_ids(
@@ -610,7 +629,7 @@ install_handlers([]) ->
     throw(no_logger_handler_configured);
 install_handlers(Handlers) ->
     ok = do_install_handlers(Handlers),
-    ok = logger:remove_handler(default),
+    _ = logger:remove_handler(default),
     ok = define_primary_level(Handlers),
     ok.
 

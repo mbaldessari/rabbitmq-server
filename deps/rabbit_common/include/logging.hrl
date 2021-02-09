@@ -12,3 +12,8 @@
 
 -define(DEFAULT_LOG_LEVEL, info).
 -define(FILTER_NAME, rmqlog_filter).
+
+-define(IS_STD_H_COMPAT(Mod),
+        Mod =:= logger_std_h orelse Mod =:= rabbit_logger_std_h).
+-define(IS_STDDEV(DevName),
+        DevName =:= standard_io orelse DevName =:= standard_error).
