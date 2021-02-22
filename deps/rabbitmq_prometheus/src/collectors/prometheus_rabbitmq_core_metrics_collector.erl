@@ -36,7 +36,7 @@
 %% ==How to determine if a metric should be of type GAUGE or COUNTER?==
 %%
 %% * GAUGE if you care about its value rather than rate of change
-%%   - value can decrease as well as decrease
+%%   - value can increase as well as decrease
 %% * COUNTER if you care about the rate of change
 %%   - value can only increase
 %%
@@ -188,6 +188,10 @@
         {2, undefined, queue_messages_paged_out_bytes, gauge, "Size in bytes of messages paged out to disk", message_bytes_paged_out},
         {2, undefined, queue_disk_reads_total, counter, "Total number of times queue read messages from disk", disk_reads},
         {2, undefined, queue_disk_writes_total, counter, "Total number of times queue wrote messages to disk", disk_writes}
+    ]},
+
+    {quorum_queue_metrics, [
+        {2, undefined, quorum_queue_available, gauge, "Quorum queue can write to a majority of nodes"}
     ]},
 
     {auth_attempt_metrics, [

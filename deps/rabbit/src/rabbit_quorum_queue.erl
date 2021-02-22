@@ -361,6 +361,7 @@ capabilities() ->
 rpc_delete_metrics(QName) ->
     ets:delete(queue_coarse_metrics, QName),
     ets:delete(queue_metrics, QName),
+    ets:delete(quorum_queue_metrics, QName),
     ok.
 
 spawn_deleter(QName) ->
@@ -412,8 +413,22 @@ handle_tick(QName,
                                                        rabbit_fifo:make_purge_nodes(Stale)),
 
                               ok
-                      end
-              end),
+                      end,
+                     % evaluate queue availability and update last seen on success
+                     %TODO ansd: should we execute consistent_query conditonally if PerObjectMetrics = application:get_env(rabbitmq_prometheus, return_per_object_metrics, false),
+                     %TODO ansd: consistent_query only every 15 - 30 seconds (instead of 5 seconds tick time) to not cause unnecssary load?
+                     {ok, Qq} = rabbit_amqqueue:lookup(QName),
+                     case ra:consistent_query(amqqueue:get_pid(Qq),
+                                              fun (_) -> ok end) of
+                         {ok, ok, _} ->
+                             rabbit_log:debug("consistent_query succeeded for queue ~p~n", [QName]),
+                             rabbit_core_metrics:quorum_queue_available(QName),
+                             ok;
+                         _ ->
+                             rabbit_log:debug("consistent_query failed for queue ~p~n", [QName]),
+                             ok
+                     end
+             end),
     ok.
 
 repair_leader_record(QName, Self) ->

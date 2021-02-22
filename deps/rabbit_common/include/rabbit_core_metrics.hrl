@@ -17,6 +17,7 @@
                       {channel_process_metrics, set},
                       {consumer_created, set},
                       {queue_metrics, set},
+                      {quorum_queue_metrics, set},
                       {queue_coarse_metrics, set},
                       {node_persister_metrics, set},
                       {node_coarse_metrics, set},
@@ -42,6 +43,7 @@
 %% consumer_created :: {{queue_id, channel_id, consumer_tag}, exclusive_consume,
 %%                      ack_required, prefetch_count, args}
 %% queue_metrics :: {queue_id, proplist}
+%% quorum_queue_metrics :: {queue_id, proplist}
 %% queue_coarse_metrics :: {queue_id, messages_ready, messages_unacknowledge,
 %%                          messages, reductions}
 %% node_persister_metrics :: {node_id, proplist}
