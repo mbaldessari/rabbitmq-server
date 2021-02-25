@@ -191,7 +191,7 @@
     ]},
 
     {quorum_queue_metrics, [
-        {2, undefined, quorum_queue_available, gauge, "Quorum queue can write to a majority of nodes"}
+        {2, undefined, quorum_queue_up_epoch_seconds, gauge, "Number of seconds since epoch the last time the quorum queue was observed to be available"}
     ]},
 
     {auth_attempt_metrics, [
