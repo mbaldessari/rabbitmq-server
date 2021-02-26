@@ -695,25 +695,13 @@ tick(Ts, #?MODULE{cfg = #cfg{name = Name,
         true ->
             [{mod_call, rabbit_quorum_queue, spawn_deleter, [QName]}];
         false ->
-            %TODO ansd: should we execute consistent_query conditonally only if PerObjectMetrics = application:get_env(rabbitmq_prometheus, return_per_object_metrics, false),
-            %TODO ansd: consistent_query only every 15 - 30 seconds (instead of 5 seconds tick time) to reduce load?
-            {ok, Qq} = rabbit_amqqueue:lookup(QName),
-            Up = case ra:consistent_query(amqqueue:get_pid(Qq), fun (_) -> ok end) of
-                {ok, ok, _} ->
-                    rabbit_log:debug("consistent_query succeeded for queue ~p~n", [QName]),
-                    1;
-                _ ->
-                    rabbit_log:debug("consistent_query failed for queue ~p~n", [QName]),
-                    0
-            end,
             Metrics = {Name,
                        messages_ready(State),
                        num_checked_out(State), % checked out
                        messages_total(State),
                        query_consumer_count(State), % Consumers
                        EnqueueBytes,
-                       CheckoutBytes,
-                       Up},
+                       CheckoutBytes},
             [{mod_call, rabbit_quorum_queue,
               handle_tick, [QName, Metrics, all_nodes(State)]}]
     end.

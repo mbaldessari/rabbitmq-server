@@ -370,7 +370,7 @@ spawn_deleter(QName) ->
           end).
 
 handle_tick(QName,
-            {Name, MR, MU, M, C, MsgBytesReady, MsgBytesUnack, Up},
+            {Name, MR, MU, M, C, MsgBytesReady, MsgBytesUnack},
             Nodes) ->
     %% this makes calls to remote processes so cannot be run inside the
     %% ra server
@@ -388,11 +388,21 @@ handle_tick(QName,
                                {message_bytes_unacknowledged, MsgBytesUnack},
                                {message_bytes, MsgBytesReady + MsgBytesUnack},
                                {message_bytes_persistent, MsgBytesReady + MsgBytesUnack},
-                               {messages_persistent, M},
-                               {up, Up}
+                               {messages_persistent, M}
 
                                | infos(QName, ?STATISTICS_KEYS -- [consumers])],
-                      rabbit_core_metrics:queue_stats(QName, Infos),
+                      %TODO ansd: should we execute consistent_query conditonally only if PerObjectMetrics = application:get_env(rabbitmq_prometheus, return_per_object_metrics, false),
+                      %TODO ansd: consistent_query only every 15 - 30 seconds (instead of 5 seconds tick time) to reduce load?
+                      {ok, Qq} = rabbit_amqqueue:lookup(QName),
+                      Up = case ra:consistent_query(amqqueue:get_pid(Qq), fun (_) -> ok end) of
+                          {ok, ok, _} ->
+                              rabbit_log:debug("consistent_query succeeded for queue ~p~n", [QName]),
+                              1;
+                          _ ->
+                              rabbit_log:debug("consistent_query failed for queue ~p~n", [QName]),
+                              0
+                      end,
+                      rabbit_core_metrics:queue_stats(QName, [{up, Up} | Infos]),
                       rabbit_event:notify(queue_stats,
                                           Infos ++ [{name, QName},
                                                     {messages, M},
