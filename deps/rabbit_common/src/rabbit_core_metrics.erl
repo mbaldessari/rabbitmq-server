@@ -38,7 +38,7 @@
          queue_deleted/1,
          queues_deleted/1]).
 
--export([quorum_queue_available/1]).
+% -export([quorum_queue_available/1]).
 
 -export([node_stats/2]).
 
@@ -443,6 +443,6 @@ format_auth_attempt({Protocol, Total, Succeeded, Failed}) ->
     [{protocol, atom_to_binary(Protocol, utf8)}, {auth_attempts, Total},
      {auth_attempts_failed, Failed}, {auth_attempts_succeeded, Succeeded}].
 
-quorum_queue_available(Name) ->
-    ets:insert(quorum_queue_metrics, {Name, os:system_time(second)}),
-    ok.
+% quorum_queue_available(Name) ->
+    % ets:insert(quorum_queue_metrics, {Name, os:system_time(second)}),
+    % ok.
