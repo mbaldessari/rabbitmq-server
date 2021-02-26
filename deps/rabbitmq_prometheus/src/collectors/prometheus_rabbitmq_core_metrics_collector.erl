@@ -188,7 +188,7 @@
         {2, undefined, queue_messages_paged_out_bytes, gauge, "Size in bytes of messages paged out to disk", message_bytes_paged_out},
         {2, undefined, queue_disk_reads_total, counter, "Total number of times queue read messages from disk", disk_reads},
         {2, undefined, queue_disk_writes_total, counter, "Total number of times queue wrote messages to disk", disk_writes},
-        {2, undefined, queue_up_epoch_seconds, gauge, "Number of seconds since epoch the last time the quorum queue was observed to be available", last_up_epoch_seconds}
+        {2, undefined, queue_up, gauge, "Quorum queue is available (i.e. has a leader and a majority)", up}
     ]},
 
     % {quorum_queue_metrics, [

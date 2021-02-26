@@ -397,17 +397,16 @@ handle_tick(QName,
                       %TODO ansd: should we execute consistent_query conditonally if PerObjectMetrics = application:get_env(rabbitmq_prometheus, return_per_object_metrics, false),
                       %TODO ansd: consistent_query only every 15 - 30 seconds (instead of 5 seconds tick time) to not cause unnecssary load?
                       {ok, Qq} = rabbit_amqqueue:lookup(QName),
-                      InfosWithAvailable = case ra:consistent_query(amqqueue:get_pid(Qq), fun (_) -> ok end) of
+                      InfosWithUp = case ra:consistent_query(amqqueue:get_pid(Qq), fun (_) -> ok end) of
                           {ok, ok, _} ->
                               rabbit_log:debug("consistent_query succeeded for queue ~p~n", [QName]),
-                              lists:append(Infos, [{last_up_epoch_seconds, os:system_time(second)}]);
+                              lists:append(Infos, [{up, 1}]);
                           _ ->
                               rabbit_log:debug("consistent_query failed for queue ~p~n", [QName]),
-                              %TODO ansd: could explicitly update entry to be down?
-                              Infos
+                              lists:append(Infos, [{up, 0}])
                       end,
 
-                      rabbit_core_metrics:queue_stats(QName, InfosWithAvailable),
+                      rabbit_core_metrics:queue_stats(QName, InfosWithUp),
                       rabbit_event:notify(queue_stats,
                                           Infos ++ [{name, QName},
                                                     {messages, M},
