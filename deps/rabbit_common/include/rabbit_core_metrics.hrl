@@ -17,7 +17,6 @@
                       {channel_process_metrics, set},
                       {consumer_created, set},
                       {queue_metrics, set},
-                      % {quorum_queue_metrics, set},
                       {queue_coarse_metrics, set},
                       {node_persister_metrics, set},
                       {node_coarse_metrics, set},

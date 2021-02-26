@@ -361,7 +361,6 @@ capabilities() ->
 rpc_delete_metrics(QName) ->
     ets:delete(queue_coarse_metrics, QName),
     ets:delete(queue_metrics, QName),
-    % ets:delete(quorum_queue_metrics, QName),
     ok.
 
 spawn_deleter(QName) ->
@@ -371,7 +370,7 @@ spawn_deleter(QName) ->
           end).
 
 handle_tick(QName,
-            {Name, MR, MU, M, C, MsgBytesReady, MsgBytesUnack},
+            {Name, MR, MU, M, C, MsgBytesReady, MsgBytesUnack, Up},
             Nodes) ->
     %% this makes calls to remote processes so cannot be run inside the
     %% ra server
@@ -389,24 +388,11 @@ handle_tick(QName,
                                {message_bytes_unacknowledged, MsgBytesUnack},
                                {message_bytes, MsgBytesReady + MsgBytesUnack},
                                {message_bytes_persistent, MsgBytesReady + MsgBytesUnack},
-                               {messages_persistent, M}
+                               {messages_persistent, M},
+                               {up, Up}
 
                                | infos(QName, ?STATISTICS_KEYS -- [consumers])],
-
-                      % evaluate queue availability and update last seen on success
-                      %TODO ansd: should we execute consistent_query conditonally if PerObjectMetrics = application:get_env(rabbitmq_prometheus, return_per_object_metrics, false),
-                      %TODO ansd: consistent_query only every 15 - 30 seconds (instead of 5 seconds tick time) to not cause unnecssary load?
-                      {ok, Qq} = rabbit_amqqueue:lookup(QName),
-                      InfosWithUp = case ra:consistent_query(amqqueue:get_pid(Qq), fun (_) -> ok end) of
-                          {ok, ok, _} ->
-                              rabbit_log:debug("consistent_query succeeded for queue ~p~n", [QName]),
-                              lists:append(Infos, [{up, 1}]);
-                          _ ->
-                              rabbit_log:debug("consistent_query failed for queue ~p~n", [QName]),
-                              lists:append(Infos, [{up, 0}])
-                      end,
-
-                      rabbit_core_metrics:queue_stats(QName, InfosWithUp),
+                      rabbit_core_metrics:queue_stats(QName, Infos),
                       rabbit_event:notify(queue_stats,
                                           Infos ++ [{name, QName},
                                                     {messages, M},
@@ -428,7 +414,7 @@ handle_tick(QName,
 
                               ok
                       end
-             end),
+              end),
     ok.
 
 repair_leader_record(QName, Self) ->

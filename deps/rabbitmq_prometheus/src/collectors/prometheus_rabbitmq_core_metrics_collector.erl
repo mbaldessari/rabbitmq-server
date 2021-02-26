@@ -191,10 +191,6 @@
         {2, undefined, queue_up, gauge, "Quorum queue is available (i.e. has a leader and a majority)", up}
     ]},
 
-    % {quorum_queue_metrics, [
-        % {2, undefined, quorum_queue_up_epoch_seconds, gauge, "Number of seconds since epoch the last time the quorum queue was observed to be available"}
-    % ]},
-
     {auth_attempt_metrics, [
         {2, undefined, auth_attempts_total, counter, "Total number of authorization attempts"},
         {3, undefined, auth_attempts_succeeded_total, counter, "Total number of successful authentication attempts"},
